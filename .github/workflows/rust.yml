@@ -1,0 +1,45 @@
+name: CI
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+      - '*.*.*'
+jobs:
+  build:
+    name: "Build Flatpak"
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Flatpak
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: maia.flatpak
+          manifest-path: dev.maiachess.MaiaChess.yml
+      - name: Upload temporary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-bundle
+          path: maia.flatpak
+  release:
+    name: "Publish Release"
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: flatpak-bundle
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: maia.flatpak
+          generate_release_notes: true
+          body: |
+            Flatpak bundle 
