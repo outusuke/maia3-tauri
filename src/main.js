@@ -1,0 +1,1463 @@
+const invoke = window.__TAURI__.core.invoke;
+const listen = window.__TAURI__.event.listen;
+
+const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
+const RANKS = ["1", "2", "3", "4", "5", "6", "7", "8"];
+const STANDARD_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+
+function pieceImageSrc(piece) {
+  const color = piece === piece.toUpperCase() ? "w" : "b";
+  return `img/chesspieces/wikipedia/${color}${piece.toUpperCase()}.png`;
+}
+
+// Native HTML5 DnD is out: .piece has pointer-events: none, and WebKitGTK's support is flaky anyway.
+let suppressNextClick = false;
+
+// onDrop gets ("square", name), ("tray", el) or (null, null); tiny movements count as a click and skip it.
+function beginPointerDrag(pointerEvent, ghostSrc, onDrop, sourceEl) {
+  const startX = pointerEvent.clientX;
+  const startY = pointerEvent.clientY;
+  const SIZE = 52;
+  let engaged = false;
+  let ghost = null;
+  let overEl = null;
+
+  function setOver(next) {
+    if (next === overEl) return;
+    if (overEl) overEl.classList.remove("drag-over");
+    if (next) next.classList.add("drag-over");
+    overEl = next;
+  }
+
+  function elementUnder(clientX, clientY) {
+    if (ghost) ghost.style.display = "none";
+    const under = document.elementFromPoint(clientX, clientY);
+    if (ghost) ghost.style.display = "";
+    if (!under || !under.closest) return null;
+    return under.closest(".square[data-square]") || under.closest(".tray");
+  }
+
+  function onMove(ev) {
+    const dx = ev.clientX - startX;
+    const dy = ev.clientY - startY;
+    if (!engaged) {
+      if (Math.hypot(dx, dy) < 4) return;
+      engaged = true;
+      if (sourceEl) sourceEl.classList.add("dragging");
+      ghost = document.createElement("img");
+      ghost.src = ghostSrc;
+      ghost.className = "piece drag-ghost";
+      document.body.appendChild(ghost);
+    }
+    ghost.style.left = (ev.clientX - SIZE / 2) + "px";
+    ghost.style.top = (ev.clientY - SIZE / 2) + "px";
+    setOver(elementUnder(ev.clientX, ev.clientY));
+  }
+
+  function cleanup() {
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    document.removeEventListener("pointercancel", onCancel);
+    if (overEl) overEl.classList.remove("drag-over");
+    if (sourceEl) sourceEl.classList.remove("dragging");
+    if (ghost) ghost.remove();
+  }
+
+  function onUp(ev) {
+    const wasEngaged = engaged;
+    const target = overEl;
+    cleanup();
+    if (!wasEngaged) return;
+    suppressNextClick = true;
+    // Clear the flag if no click consumed it so it can't swallow a later, unrelated click.
+    setTimeout(() => { suppressNextClick = false; }, 0);
+    if (target && target.classList.contains("square")) {
+      onDrop("square", target.dataset.square);
+    } else if (target && target.classList.contains("tray")) {
+      onDrop("tray", target);
+    } else {
+      onDrop(null, null);
+    }
+  }
+
+  function onCancel() { cleanup(); }
+
+  document.addEventListener("pointermove", onMove);
+  document.addEventListener("pointerup", onUp);
+  document.addEventListener("pointercancel", onCancel);
+}
+
+function fenToBoard(fen) {
+  const placement = fen.split(" ")[0];
+  const rows = placement.split("/"); // rank8 .. rank1
+  const board = {};
+  rows.forEach((row, rowIdx) => {
+    const rank = 8 - rowIdx;
+    let file = 0;
+    for (const ch of row) {
+      if (/\d/.test(ch)) {
+        file += parseInt(ch, 10);
+      } else {
+        board[FILES[file] + rank] = ch;
+        file += 1;
+      }
+    }
+  });
+  return board;
+}
+
+function boardToPlacement(board) {
+  const rows = [];
+  for (let rank = 8; rank >= 1; rank--) {
+    let row = "";
+    let empty = 0;
+    for (const file of FILES) {
+      const piece = board[file + rank];
+      if (piece) {
+        if (empty > 0) { row += empty; empty = 0; }
+        row += piece;
+      } else {
+        empty += 1;
+      }
+    }
+    if (empty > 0) row += empty;
+    rows.push(row);
+  }
+  return rows.join("/");
+}
+
+function squareColor(file, rank) {
+  const fi = FILES.indexOf(file);
+  const ri = RANKS.indexOf(rank);
+  return (fi + ri) % 2 === 0 ? "dark" : "light";
+}
+
+function sideToMove(fen) {
+  const parts = fen.split(" ");
+  return parts[1] === "b" ? "black" : "white";
+}
+
+function materialText(fen) {
+  const board = fenToBoard(fen);
+  let white = 0, black = 0;
+  for (const p of Object.values(board)) {
+    const v = PIECE_VALUES[p.toLowerCase()] || 0;
+    if (p === p.toUpperCase()) white += v; else black += v;
+  }
+  const diff = white - black;
+  if (diff === 0) return "Material: even";
+  return diff > 0 ? `Material: White +${diff}` : `Material: Black +${-diff}`;
+}
+
+// Rebuilds the whole board DOM on every call; cheap at this size.
+function renderChessBoard(el, fen, opts) {
+  opts = opts || {};
+  el.innerHTML = "";
+  const board = fenToBoard(fen);
+  const flipped = !!opts.flipped;
+
+  const files = flipped ? [...FILES].reverse() : FILES;
+  const ranks = flipped ? RANKS : [...RANKS].reverse();
+
+  for (const rank of ranks) {
+    for (const file of files) {
+      const sq = file + rank;
+      const div = document.createElement("div");
+      div.className = `square ${squareColor(file, rank)}`;
+      div.dataset.square = sq;
+
+      if (opts.selected === sq) div.classList.add("selected");
+      if (opts.lastMove && (opts.lastMove[0] === sq || opts.lastMove[1] === sq)) {
+        div.classList.add("last-move");
+      }
+      if (opts.checkSquare && sq === opts.checkSquare) {
+        div.classList.add("in-check");
+      }
+      if (opts.legalTargets && opts.legalTargets.includes(sq)) {
+        div.classList.add("move-dot");
+        if (board[sq]) div.classList.add("capture");
+      }
+
+      const piece = board[sq];
+      if (piece) {
+        const img = document.createElement("img");
+        img.className = "piece";
+        img.src = pieceImageSrc(piece);
+        img.alt = piece;
+        div.appendChild(img);
+      }
+
+      if (file === files[0]) {
+        const rc = document.createElement("span");
+        rc.className = "coord rank";
+        rc.textContent = rank;
+        div.appendChild(rc);
+      }
+      if (rank === ranks[ranks.length - 1]) {
+        const fc = document.createElement("span");
+        fc.className = "coord file";
+        fc.textContent = file;
+        div.appendChild(fc);
+      }
+
+      if (opts.interactive) {
+        div.addEventListener("click", () => {
+          if (suppressNextClick) { suppressNextClick = false; return; }
+          opts.onSquareClick && opts.onSquareClick(sq);
+        });
+        if (piece) {
+          div.addEventListener("pointerdown", (e) => {
+            if (e.button !== undefined && e.button !== 0) return;
+            beginPointerDrag(e, pieceImageSrc(piece), (kind, value) => {
+              if (kind === "square" && value !== sq && opts.onDropMove) {
+                opts.onDropMove(sq, value);
+              } else if (kind === "tray" && opts.onDropToTray) {
+                opts.onDropToTray(sq);
+              }
+            }, div);
+          });
+        }
+      }
+
+      el.appendChild(div);
+    }
+  }
+}
+
+function needsPromotionMove(fen, from, to) {
+  const board = fenToBoard(fen);
+  const piece = board[from];
+  if (!piece) return false;
+  const isPawn = piece.toLowerCase() === "p";
+  const destRank = to[1];
+  return isPawn && (destRank === "8" || destRank === "1");
+}
+
+function askPromotion(pickerEl, colorPrefix) {
+  return new Promise((resolve) => {
+    pickerEl.querySelectorAll(".promo-btn").forEach((btn) => {
+      const img = btn.querySelector(".promo-img");
+      img.src = `img/chesspieces/wikipedia/${colorPrefix}${btn.dataset.piece.toUpperCase()}.png`;
+    });
+    pickerEl.classList.remove("hidden");
+    const handler = (e) => {
+      const btn = e.target.closest(".promo-btn");
+      if (!btn) return;
+      pickerEl.classList.add("hidden");
+      pickerEl.removeEventListener("click", handler);
+      resolve(btn.dataset.piece);
+    };
+    pickerEl.addEventListener("click", handler);
+  });
+}
+
+const tabButtons = document.querySelectorAll(".tabBtn");
+const tabPanels = { play: document.getElementById("playTab"), analyze: document.getElementById("analyzeTab") };
+tabButtons.forEach((btn) => {
+  btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+});
+function switchTab(name) {
+  tabButtons.forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+  Object.entries(tabPanels).forEach(([k, el]) => el.classList.toggle("active", k === name));
+}
+
+// ---- Play tab ----
+const els = {
+  board: document.getElementById("board"),
+  status: document.getElementById("status-line"),
+  moveList: document.getElementById("move-list"),
+  startBtn: document.getElementById("start-btn"),
+  flipBtn: document.getElementById("flip-btn"),
+  resignBtn: document.getElementById("resign-btn"),
+  analyzeThisBtn: document.getElementById("analyze-this-btn"),
+  sideSelect: document.getElementById("side-select"),
+  modelSelect: document.getElementById("model-select"),
+  eloSlider: document.getElementById("elo-slider"),
+  eloValue: document.getElementById("elo-value"),
+  temperatureSlider: document.getElementById("temperature-slider"),
+  temperatureValue: document.getElementById("temperature-value"),
+  topPSlider: document.getElementById("top-p-slider"),
+  topPValue: document.getElementById("top-p-value"),
+  promoPicker: document.getElementById("promo-picker"),
+  startFenInput: document.getElementById("start-fen-input"),
+  clearFenBtn: document.getElementById("clear-fen-btn"),
+  fenError: document.getElementById("fen-error"),
+  openSetupBtn: document.getElementById("open-setup-btn"),
+  undoBtn: document.getElementById("undo-btn"),
+  copyPgnBtn: document.getElementById("copy-pgn-btn"),
+  historyNotice: document.getElementById("history-notice"),
+  goLiveBtn: document.getElementById("go-live-btn"),
+  navStart: document.getElementById("nav-start"),
+  navPrev: document.getElementById("nav-prev"),
+  navNext: document.getElementById("nav-next"),
+  navEnd: document.getElementById("nav-end"),
+};
+
+let state = {
+  fen: STANDARD_FEN,
+  turn: "white",
+  status: "not-started",
+  winner: null,
+  lastMove: null,
+  sanHistory: [],
+};
+
+let playerColor = "white";
+let flipped = false;
+let selected = null;
+let legalTargets = [];
+let engineBusy = false;
+let gameStarted = false;
+let startFen = STANDARD_FEN;
+
+// One entry per ply (0 = start), mirrors the backend's game state.
+let posHistory = [{ fen: STANDARD_FEN, lastMove: null }];
+let viewPly = 0; // index into posHistory currently shown; live = length-1
+
+els.eloSlider.addEventListener("input", () => { els.eloValue.textContent = els.eloSlider.value; });
+els.temperatureSlider.addEventListener("input", () => { els.temperatureValue.textContent = els.temperatureSlider.value; });
+els.topPSlider.addEventListener("input", () => { els.topPValue.textContent = els.topPSlider.value; });
+els.startBtn.addEventListener("click", startGame);
+els.flipBtn.addEventListener("click", () => { flipped = !flipped; renderPlayBoard(); });
+els.resignBtn.addEventListener("click", resign);
+els.clearFenBtn.addEventListener("click", () => { els.startFenInput.value = ""; hideFenError(); });
+els.undoBtn.addEventListener("click", doUndo);
+els.copyPgnBtn.addEventListener("click", copyPgn);
+els.goLiveBtn.addEventListener("click", () => { viewPly = posHistory.length - 1; renderPlayBoard(); renderMoveList(); });
+els.navStart.addEventListener("click", () => { viewPly = 0; renderPlayBoard(); renderMoveList(); });
+els.navPrev.addEventListener("click", () => { viewPly = Math.max(0, viewPly - 1); renderPlayBoard(); renderMoveList(); });
+els.navNext.addEventListener("click", () => { viewPly = Math.min(posHistory.length - 1, viewPly + 1); renderPlayBoard(); renderMoveList(); });
+els.navEnd.addEventListener("click", () => { viewPly = posHistory.length - 1; renderPlayBoard(); renderMoveList(); });
+els.analyzeThisBtn.addEventListener("click", sendGameToAnalyze);
+
+function hideFenError() { els.fenError.style.display = "none"; els.fenError.textContent = ""; }
+function showFenError(msg) { els.fenError.textContent = msg; els.fenError.style.display = "block"; }
+
+// Always ONNX; only the first-launch screen in index.html still touches the "maia3.backend" key.
+const ENGINE_BACKEND = "onnx";
+
+// Runs setup on the fly if the chosen model size wasn't exported during onboarding.
+async function ensureOnnxModelReady(model) {
+  const s = await invoke("setup_status");
+  if (s.onnxRuntimeReady && s.onnxModelsReady.includes(model)) return;
+  setStatus(`Preparing Maia-3 (${model}) — first time only, this can take a few minutes…`);
+  // Surface each setup step so it doesn't look hung.
+  const stop = await listenSetupProgress("maia", (p) => {
+    const text = progressText(p);
+    setStatus(`Preparing Maia-3 (${model}) — ${text}`);
+    els.startBtn.textContent = `Setting up… ${Math.floor(p.overall)}%`;
+  });
+  try {
+    await invoke("run_onnx_setup", { model });
+  } finally {
+    stop();
+  }
+}
+
+function progressText(p) {
+  if (p.state === "done") return "done";
+  const label = p.steps[p.index] || "";
+  const detail = p.detail ? ` (${p.detail})` : "";
+  return `step ${Math.min(p.index + 1, p.steps.length)} of ${p.steps.length}: ${label}${detail}`;
+}
+
+async function listenSetupProgress(task, handler) {
+  return await listen("setup-progress", (e) => {
+    if (e.payload && e.payload.task === task) handler(e.payload);
+  });
+}
+
+async function startGame() {
+  els.startBtn.disabled = true;
+  els.startBtn.textContent = "Loading model…";
+  setStatus("Starting Maia-3 — first run may need to download the checkpoint…");
+
+  try {
+    const fenInput = els.startFenInput.value.trim();
+    if (fenInput) {
+      try {
+        await invoke("validate_fen", { fen: fenInput });
+      } catch (err) {
+        showFenError(String(err));
+        els.startBtn.disabled = false;
+        els.startBtn.textContent = "Start game";
+        setStatus("Fix the Start FEN before starting.");
+        return;
+      }
+    }
+    hideFenError();
+
+    const chosen = els.sideSelect.value;
+    playerColor = chosen === "random" ? (Math.random() < 0.5 ? "white" : "black") : chosen;
+    flipped = playerColor === "black";
+
+    const model = els.modelSelect.value;
+    const elo = parseInt(els.eloSlider.value, 10);
+    const temperature = els.temperatureSlider.value;
+    const topP = els.topPSlider.value;
+
+    await ensureOnnxModelReady(model);
+
+    state = await invoke("new_game", { fen: fenInput || null });
+    startFen = state.fen === STANDARD_FEN ? STANDARD_FEN : (fenInput || state.fen);
+    posHistory = [{ fen: state.fen, lastMove: null }];
+    viewPly = 0;
+
+    await invoke("start_engine", {
+      command: model,
+      elo,
+      backend: ENGINE_BACKEND,
+      extraArgs: [
+        "--temperature", String(temperature),
+        "--top-p", String(topP),
+        // Fresh seed per game so temperature > 0 actually varies between games.
+        "--seed", String((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0),
+      ],
+    });
+
+    gameStarted = true;
+    selected = null;
+    legalTargets = [];
+    renderPlayBoard();
+    renderMoveList();
+    const tempNote = Number(temperature) > 0 ? `, temp ${temperature}` : ", greedy";
+    setStatus(`Playing as ${playerColor}. Maia-3 (${model}, ${elo} Elo${tempNote}) is your opponent.`);
+
+    if (state.turn !== playerColor) {
+      await triggerEngineMove();
+    }
+  } catch (err) {
+    setStatus(`Could not start engine: ${err}`);
+  } finally {
+    els.startBtn.disabled = false;
+    els.startBtn.textContent = "Start game";
+  }
+}
+
+async function resign() {
+  if (!gameStarted || isGameOver()) return;
+  gameStarted = false;
+  state.status = "resigned";
+  state.winner = playerColor === "white" ? "black" : "white";
+  await invoke("stop_engine").catch(() => {});
+  renderPlayBoard();
+  setStatus("You resigned.");
+}
+
+function isGameOver() {
+  return ["checkmate", "stalemate", "draw", "resigned"].includes(state.status);
+}
+
+function setStatus(text) { els.status.textContent = text; }
+
+function statusBanner() {
+  switch (state.status) {
+    case "checkmate":
+      return `Checkmate — ${state.winner === playerColor ? "you win!" : "Maia-3 wins."}`;
+    case "stalemate": return "Draw by stalemate.";
+    case "draw": return "Draw.";
+    case "resigned": return "You resigned.";
+    default: return state.turn === playerColor ? "Your move." : "Maia-3 is thinking…";
+  }
+}
+
+async function triggerEngineMove() {
+  if (isGameOver()) return;
+  engineBusy = true;
+  setStatus("Maia-3 is thinking…");
+  try {
+    state = await invoke("engine_move");
+    posHistory.push({ fen: state.fen, lastMove: state.lastMove });
+    viewPly = posHistory.length - 1;
+    renderPlayBoard();
+    renderMoveList();
+  } catch (err) {
+    setStatus(`Engine error: ${err}`);
+  } finally {
+    engineBusy = false;
+    if (!isGameOver()) setStatus(statusBanner());
+  }
+}
+
+async function attemptMove(from, to) {
+  if (!isLive()) return;
+  const promoNeeded = needsPromotionMove(state.fen, from, to);
+  let promotion = null;
+  if (promoNeeded) {
+    const prefix = playerColor === "white" ? "w" : "b";
+    promotion = await askPromotion(els.promoPicker, prefix);
+    if (!promotion) { clearSelection(); renderPlayBoard(); return; }
+  }
+
+  try {
+    state = await invoke("make_move", { from, to, promotion });
+    posHistory.push({ fen: state.fen, lastMove: state.lastMove });
+    viewPly = posHistory.length - 1;
+    clearSelection();
+    renderPlayBoard();
+    renderMoveList();
+    if (isGameOver()) { setStatus(statusBanner()); return; }
+    setStatus(statusBanner());
+    if (state.turn !== playerColor) {
+      await triggerEngineMove();
+      if (isGameOver()) setStatus(statusBanner());
+    }
+  } catch (err) {
+    clearSelection();
+    renderPlayBoard();
+  }
+}
+
+function clearSelection() { selected = null; legalTargets = []; }
+
+function isLive() { return viewPly === posHistory.length - 1; }
+function currentViewFen() { return posHistory[viewPly] ? posHistory[viewPly].fen : state.fen; }
+
+function findKingInCheckSquare(board, turnColor) {
+  const kingChar = turnColor === "white" ? "K" : "k";
+  for (const [sq, p] of Object.entries(board)) if (p === kingChar) return sq;
+  return null;
+}
+
+function renderPlayBoard() {
+  const viewingLive = isLive();
+  const fen = currentViewFen();
+  const entry = posHistory[viewPly] || { lastMove: null };
+
+  els.historyNotice.classList.toggle("show", !viewingLive);
+  els.navStart.disabled = viewPly === 0;
+  els.navPrev.disabled = viewPly === 0;
+  els.navNext.disabled = viewPly >= posHistory.length - 1;
+  els.navEnd.disabled = viewPly >= posHistory.length - 1;
+  els.undoBtn.disabled = !gameStarted || posHistory.length <= 1 || engineBusy;
+  els.copyPgnBtn.disabled = posHistory.length <= 1;
+  els.analyzeThisBtn.disabled = posHistory.length <= 1;
+
+  const board = fenToBoard(fen);
+  const checkSquare = (viewingLive && state.inCheck) ? findKingInCheckSquare(board, sideToMove(fen)) : null;
+
+  renderChessBoard(els.board, fen, {
+    flipped,
+    selected: viewingLive ? selected : null,
+    legalTargets: viewingLive ? legalTargets : [],
+    lastMove: entry.lastMove,
+    checkSquare,
+    interactive: viewingLive,
+    onSquareClick: onPlaySquareClick,
+    onDropMove: (from, to) => { clearSelection(); attemptMove(from, to); },
+  });
+}
+
+async function onPlaySquareClick(sq) {
+  if (!gameStarted || isGameOver() || engineBusy || !isLive()) return;
+  if (state.turn !== playerColor) return;
+
+  const board = fenToBoard(state.fen);
+  const piece = board[sq];
+  const isOwnPiece = piece && ((playerColor === "white" && piece === piece.toUpperCase()) ||
+                                (playerColor === "black" && piece === piece.toLowerCase()));
+
+  if (selected && legalTargets.includes(sq)) {
+    const from = selected;
+    clearSelection();
+    await attemptMove(from, sq);
+    return;
+  }
+
+  if (isOwnPiece) {
+    selected = sq;
+    try { legalTargets = await invoke("legal_targets", { square: sq }); }
+    catch { legalTargets = []; }
+    renderPlayBoard();
+    return;
+  }
+
+  clearSelection();
+  renderPlayBoard();
+}
+
+function renderMoveList() {
+  els.moveList.innerHTML = "";
+  const history = state.sanHistory || [];
+  for (let i = 0; i < history.length; i += 2) {
+    const num = i / 2 + 1;
+    const numEl = document.createElement("li");
+    numEl.className = "move-num";
+    numEl.textContent = `${num}.`;
+    els.moveList.appendChild(numEl);
+
+    [history[i], history[i + 1]].forEach((san, offset) => {
+      const li = document.createElement("li");
+      li.className = "move-san";
+      li.textContent = san || "";
+      const ply = i + offset + 1;
+      if (san) {
+        if (ply === viewPly) li.classList.add("current");
+        li.addEventListener("click", () => { viewPly = ply; renderPlayBoard(); renderMoveList(); });
+      }
+      els.moveList.appendChild(li);
+    });
+  }
+  els.moveList.scrollTop = els.moveList.scrollHeight;
+}
+
+async function doUndo() {
+  if (!gameStarted || posHistory.length <= 1 || engineBusy) return;
+  let removed = 0;
+  // Undo drops the player's move and Maia's reply; the backend pops one ply per call, so call it twice.
+  for (let i = 0; i < 2 && posHistory.length > 1; i++) {
+    try {
+      state = await invoke("undo_move");
+      posHistory.pop();
+      removed += 1;
+    } catch { break; }
+  }
+  if (removed === 0) return;
+  viewPly = posHistory.length - 1;
+  clearSelection();
+  renderPlayBoard();
+  renderMoveList();
+  setStatus(statusBanner());
+}
+
+function sanHistoryToPgn(sanHistory, fenForHeader) {
+  const lines = [];
+  if (fenForHeader && fenForHeader !== STANDARD_FEN) {
+    lines.push('[SetUp "1"]');
+    lines.push(`[FEN "${fenForHeader}"]`);
+  }
+  let text = "";
+  for (let i = 0; i < sanHistory.length; i += 2) {
+    const num = i / 2 + 1;
+    text += `${num}. ${sanHistory[i] || ""} ${sanHistory[i + 1] || ""} `;
+  }
+  lines.push(text.trim());
+  return lines.join("\n");
+}
+
+async function copyPgn() {
+  const pgn = sanHistoryToPgn(state.sanHistory, startFen);
+  try {
+    await navigator.clipboard.writeText(pgn);
+    const original = els.copyPgnBtn.textContent;
+    els.copyPgnBtn.textContent = "Copied!";
+    setTimeout(() => { els.copyPgnBtn.textContent = original; }, 1200);
+  } catch {
+    window.prompt("Copy PGN:", pgn);
+  }
+}
+
+function sendGameToAnalyze() {
+  if (posHistory.length <= 1) return;
+  const fens = posHistory.slice(1).map((p) => p.fen);
+  loadAnalysisGame({
+    startFen: startFen,
+    sans: state.sanHistory.slice(),
+    fens,
+  });
+  switchTab("analyze");
+}
+
+renderPlayBoard();
+
+// ---- Position editor ----
+const ed = {
+  overlay: document.getElementById("setup-overlay"),
+  board: document.getElementById("editor-board"),
+  trayWhite: document.getElementById("trayWhite"),
+  trayBlack: document.getElementById("trayBlack"),
+  turnSelect: document.getElementById("editorTurnSelect"),
+  castleWK: document.getElementById("castleWK"),
+  castleWQ: document.getElementById("castleWQ"),
+  castleBK: document.getElementById("castleBK"),
+  castleBQ: document.getElementById("castleBQ"),
+  fenPreview: document.getElementById("fenPreview"),
+  error: document.getElementById("editorError"),
+  standardBtn: document.getElementById("editorStandardBtn"),
+  clearBtn: document.getElementById("editorClearBtn"),
+  applyBtn: document.getElementById("editorApplyBtn"),
+  cancelBtn: document.getElementById("editorCancelBtn"),
+};
+
+let editorBoardState = {}; // {square: pieceChar}
+
+function buildTray(container, color) {
+  container.innerHTML = "";
+  const order = ["K", "Q", "R", "B", "N", "P"];
+  for (const letter of order) {
+    const piece = color === "white" ? letter : letter.toLowerCase();
+    const img = document.createElement("img");
+    img.className = "piece";
+    img.src = pieceImageSrc(piece);
+    img.alt = piece;
+    img.dataset.piece = piece;
+    img.addEventListener("pointerdown", (e) => {
+      if (e.button !== undefined && e.button !== 0) return;
+      beginPointerDrag(e, pieceImageSrc(piece), (kind, value) => {
+        if (kind === "square") {
+          editorBoardState[value] = piece;
+          renderEditorBoard();
+        }
+      });
+    });
+    container.appendChild(img);
+  }
+}
+buildTray(ed.trayWhite, "white");
+buildTray(ed.trayBlack, "black");
+
+function renderEditorBoard() {
+  renderChessBoard(ed.board, boardFenOnly(), {
+    interactive: true,
+    onSquareClick: (sq) => {
+      if (editorBoardState[sq]) { delete editorBoardState[sq]; renderEditorBoard(); }
+    },
+    onDropMove: (from, to) => {
+      editorBoardState[to] = editorBoardState[from];
+      delete editorBoardState[from];
+      renderEditorBoard();
+    },
+    onDropToTray: (from) => {
+      delete editorBoardState[from];
+      renderEditorBoard();
+    },
+  });
+  updateFenPreview();
+}
+
+function boardFenOnly() {
+  return boardToPlacement(editorBoardState) + " w - - 0 1";
+}
+
+function buildEditorFen() {
+  const placement = boardToPlacement(editorBoardState);
+  const turn = ed.turnSelect.value;
+  let castling = "";
+  if (ed.castleWK.checked) castling += "K";
+  if (ed.castleWQ.checked) castling += "Q";
+  if (ed.castleBK.checked) castling += "k";
+  if (ed.castleBQ.checked) castling += "q";
+  if (!castling) castling = "-";
+  return `${placement} ${turn} ${castling} - 0 1`;
+}
+
+function updateFenPreview() {
+  ed.fenPreview.textContent = buildEditorFen();
+}
+
+function loadStandardIntoEditor() {
+  editorBoardState = fenToBoard(STANDARD_FEN);
+  ed.turnSelect.value = "w";
+  ed.castleWK.checked = ed.castleWQ.checked = ed.castleBK.checked = ed.castleBQ.checked = true;
+  renderEditorBoard();
+}
+
+ed.standardBtn.addEventListener("click", loadStandardIntoEditor);
+ed.clearBtn.addEventListener("click", () => { editorBoardState = {}; renderEditorBoard(); });
+[ed.turnSelect, ed.castleWK, ed.castleWQ, ed.castleBK, ed.castleBQ].forEach((el) => {
+  el.addEventListener("change", updateFenPreview);
+});
+
+els.openSetupBtn.addEventListener("click", () => {
+  ed.error.textContent = "";
+  const startingFen = els.startFenInput.value.trim() || state.fen || STANDARD_FEN;
+  editorBoardState = fenToBoard(startingFen);
+  const parts = startingFen.split(" ");
+  ed.turnSelect.value = parts[1] === "b" ? "b" : "w";
+  const castling = parts[2] || "-";
+  ed.castleWK.checked = castling.includes("K");
+  ed.castleWQ.checked = castling.includes("Q");
+  ed.castleBK.checked = castling.includes("k");
+  ed.castleBQ.checked = castling.includes("q");
+  renderEditorBoard();
+  ed.overlay.classList.add("show");
+});
+ed.cancelBtn.addEventListener("click", () => ed.overlay.classList.remove("show"));
+
+ed.applyBtn.addEventListener("click", async () => {
+  const fen = buildEditorFen();
+  ed.error.textContent = "";
+  try {
+    await invoke("validate_fen", { fen });
+  } catch (err) {
+    ed.error.textContent = String(err);
+    return;
+  }
+  els.startFenInput.value = fen;
+  hideFenError();
+  ed.overlay.classList.remove("show");
+  setStatus("Position loaded — click New Game to play it.");
+});
+
+// ---- Analyze / practice ----
+const az = {
+  board: document.getElementById("analyzeBoard"),
+  promo: document.getElementById("analyzePromo"),
+  flipBtn: document.getElementById("aFlipBtn"),
+  evalGraph: document.getElementById("evalGraph"),
+  evalBox: document.getElementById("evalGraphBox"),
+  evalInfo: document.getElementById("evalInfo"),
+  evalLegend: document.getElementById("evalLegend"),
+  pgnInput: document.getElementById("pgnInput"),
+  loadBtn: document.getElementById("loadGameBtn"),
+  loadError: document.getElementById("loadError"),
+  sideSelect: document.getElementById("analyzeSideSelect"),
+  depthSelect: document.getElementById("analyzeDepthSelect"),
+  analyzeBtn: document.getElementById("analyzeGameBtn"),
+  analyzeStatus: document.getElementById("analyzeStatus"),
+  moveListPanel: document.getElementById("moveListPanel"),
+  moveList: document.getElementById("analyzeMoveList"),
+  flaggedPanel: document.getElementById("flaggedPanel"),
+  flaggedList: document.getElementById("flaggedList"),
+  practiceSideRow: document.getElementById("practiceSideRow"),
+  practiceSideSelect: document.getElementById("practiceSideSelect"),
+  practiceBtn: document.getElementById("practiceBtn"),
+  navStart: document.getElementById("aNavStart"),
+  navPrev: document.getElementById("aNavPrev"),
+  navNext: document.getElementById("aNavNext"),
+  navEnd: document.getElementById("aNavEnd"),
+  puzzlePanel: document.getElementById("puzzlePanelV2"),
+  puzzleProgress: document.getElementById("puzzleProgressV2"),
+  puzzlePrompt: document.getElementById("puzzlePromptV2"),
+  puzzleFeedback: document.getElementById("puzzleFeedbackV2"),
+  puzzleActiveActions: document.getElementById("puzzleActiveActions"),
+  puzzleDoneActions: document.getElementById("puzzleDoneActions"),
+  puzzleRevealBtn: document.getElementById("puzzleRevealBtn"),
+  puzzleExitBtn: document.getElementById("puzzleExitBtn"),
+  puzzleExitBtn2: document.getElementById("puzzleExitBtn2"),
+  puzzleRestartBtn: document.getElementById("puzzleRestartBtn"),
+};
+
+let loadedGame = null;      // {startFen, sans, fens}
+let analysis = null;        // Vec<MoveAnalysis> from analyze_pgn/analyze_moves
+let azViewPly = 0;          // 0 = start position, i = after sans[i-1]
+let azFlipped = false;      // Analyze board orientation (true = Black at the bottom)
+let stockfishStarted = false;
+
+function azFenAt(ply) {
+  if (!loadedGame) return STANDARD_FEN;
+  return ply === 0 ? loadedGame.startFen : loadedGame.fens[ply - 1];
+}
+function azLastMoveAt(ply) {
+  if (!analysis || ply === 0) return null;
+  const m = analysis[ply - 1];
+  if (!m || !m.uci) return null;
+  return [m.uci.slice(0, 2), m.uci.slice(2, 4)];
+}
+
+function renderAnalyzeBoard() {
+  renderChessBoard(az.board, azFenAt(azViewPly), {
+    interactive: false,
+    flipped: azFlipped,
+    lastMove: azLastMoveAt(azViewPly),
+  });
+  az.navStart.disabled = azViewPly === 0;
+  az.navPrev.disabled = azViewPly === 0;
+  const maxPly = loadedGame ? loadedGame.sans.length : 0;
+  az.navNext.disabled = azViewPly >= maxPly;
+  az.navEnd.disabled = azViewPly >= maxPly;
+  highlightCurrentMove();
+  drawEvalGraph();
+}
+
+az.navStart.addEventListener("click", () => { azViewPly = 0; renderAnalyzeBoard(); });
+az.navPrev.addEventListener("click", () => { azViewPly = Math.max(0, azViewPly - 1); renderAnalyzeBoard(); });
+az.navNext.addEventListener("click", () => {
+  const maxPly = loadedGame ? loadedGame.sans.length : 0;
+  azViewPly = Math.min(maxPly, azViewPly + 1);
+  renderAnalyzeBoard();
+});
+az.navEnd.addEventListener("click", () => {
+  azViewPly = loadedGame ? loadedGame.sans.length : 0;
+  renderAnalyzeBoard();
+});
+
+// Puzzle mode orients itself to the side to move, so flipping only shows once you leave it.
+az.flipBtn.addEventListener("click", () => {
+  azFlipped = !azFlipped;
+  if (!puzzleMode) renderAnalyzeBoard();
+});
+
+function orientAnalyzeBoardForSide() {
+  const side = az.sideSelect.value;
+  if (side === "white") azFlipped = false;
+  else if (side === "black") azFlipped = true;
+}
+
+function loadAnalysisGame(game) {
+  loadedGame = game;
+  analysis = null;
+  azViewPly = game.sans.length;
+  az.analyzeBtn.disabled = game.sans.length === 0;
+  az.moveListPanel.style.display = "none";
+  az.flaggedPanel.style.display = "none";
+  az.analyzeStatus.textContent = `Loaded ${game.sans.length} ply. Click "Analyze Game" to grade it.`;
+  azFlipped = az.sideSelect.value === "black";
+  renderAnalyzeBoard();
+  drawEvalGraph();
+  exitPuzzleMode();
+}
+
+az.loadBtn.addEventListener("click", async () => {
+  az.loadError.textContent = "";
+  const text = az.pgnInput.value.trim();
+  if (!text) { az.loadError.textContent = "Paste a PGN first."; return; }
+  try {
+    const parsed = await invoke("parse_pgn", { pgnText: text });
+    loadAnalysisGame({ startFen: parsed.startFen, sans: parsed.sans, fens: parsed.fens });
+  } catch (err) {
+    az.loadError.textContent = String(err);
+  }
+});
+
+async function ensureStockfish() {
+  if (stockfishStarted) return true;
+  try {
+    if (await invoke("stockfish_running")) {
+      stockfishStarted = true;
+      return true;
+    }
+
+    // No command passed: the backend finds Stockfish itself, since the bare name fails when launched from a desktop menu.
+    try {
+      await invoke("start_stockfish", {});
+    } catch (err) {
+      if (!String(err).startsWith("not-found:")) throw err;
+
+      // Not installed, or hidden by the Flatpak sandbox: download a private copy.
+      az.analyzeStatus.textContent =
+        "Stockfish wasn't found on this system — downloading a copy into the app's own folder…";
+      const stop = await listenSetupProgress("stockfish", (p) => {
+        az.analyzeStatus.textContent =
+          `Downloading Stockfish… ${Math.floor(p.overall)}%` + (p.detail ? ` (${p.detail})` : "");
+      });
+      try {
+        await invoke("install_stockfish");
+      } finally {
+        stop();
+      }
+      az.analyzeStatus.textContent = "Starting Stockfish…";
+      await invoke("start_stockfish", {});
+    }
+    stockfishStarted = true;
+    return true;
+  } catch (err) {
+    let msg = String(err).replace(/^not-found:\s*/, "");
+    az.analyzeStatus.textContent = "Stockfish isn't available: " + msg;
+    return false;
+  }
+}
+
+az.analyzeBtn.addEventListener("click", async () => {
+  if (!loadedGame || loadedGame.sans.length === 0) return;
+  az.analyzeBtn.disabled = true;
+  az.analyzeStatus.textContent = "Checking Stockfish…";
+  const ok = await ensureStockfish();
+  if (!ok) { az.analyzeBtn.disabled = false; return; }
+
+  az.analyzeStatus.textContent = "Analyzing… this can take a while at higher depth.";
+  try {
+    analysis = await invoke("analyze_moves", {
+      sans: loadedGame.sans,
+      startFen: loadedGame.startFen,
+      depth: parseInt(az.depthSelect.value, 10),
+      multipv: 5,
+    });
+    az.analyzeStatus.textContent = `Analyzed ${analysis.length} moves.`;
+    renderAnalyzeMoveList();
+    renderFlaggedList();
+    drawEvalGraph();
+    az.moveListPanel.style.display = "block";
+    az.flaggedPanel.style.display = "block";
+  } catch (err) {
+    az.analyzeStatus.textContent = "Analysis failed: " + err;
+  } finally {
+    az.analyzeBtn.disabled = false;
+  }
+});
+
+function gradeClass(grade) { return "grade-" + grade; }
+
+function renderAnalyzeMoveList() {
+  az.moveList.innerHTML = "";
+  const side = az.sideSelect.value;
+  for (let i = 0; i < analysis.length; i++) {
+    const m = analysis[i];
+    const mover = sideToMove(m.fenBefore);
+    if (side !== "both" && side !== mover) continue;
+
+    const row = document.createElement("div");
+    row.className = "aMove";
+    row.dataset.ply = String(i + 1);
+    const num = Math.floor(i / 2) + 1;
+    const label = (i % 2 === 0) ? `${num}.` : `${num}...`;
+    const left = document.createElement("span");
+    left.innerHTML = `<span class="gradeChip ${gradeClass(m.grade)}"></span>${label} ${m.san}`;
+    const right = document.createElement("span");
+    right.className = gradeClass(m.grade);
+    right.textContent = m.grade;
+    row.appendChild(left);
+    row.appendChild(right);
+    row.addEventListener("click", () => { azViewPly = i + 1; renderAnalyzeBoard(); });
+    az.moveList.appendChild(row);
+  }
+  if (!az.moveList.children.length) {
+    az.moveList.innerHTML = '<div class="emptyHint">No moves for this side.</div>';
+  }
+}
+az.sideSelect.addEventListener("change", () => {
+  orientAnalyzeBoardForSide();
+  if (analysis) renderAnalyzeMoveList();
+  if (!puzzleMode) renderAnalyzeBoard();
+});
+
+function highlightCurrentMove() {
+  az.moveList.querySelectorAll(".aMove").forEach((row) => {
+    row.classList.toggle("current", row.dataset.ply === String(azViewPly));
+  });
+}
+
+function renderFlaggedList() {
+  az.flaggedList.innerHTML = "";
+  const flagged = analysis
+    .map((m, i) => ({ m, i }))
+    .filter(({ m }) => m.grade === "mistake" || m.grade === "blunder");
+
+  if (flagged.length === 0) {
+    az.flaggedList.innerHTML = '<div class="emptyHint">No mistakes or blunders flagged — nice game!</div>';
+    az.practiceBtn.style.display = "none";
+    az.practiceSideRow.style.display = "none";
+    return;
+  }
+
+  for (const { m, i } of flagged) {
+    const num = Math.floor(i / 2) + 1;
+    const mover = sideToMove(m.fenBefore);
+    const label = mover === "white" ? `${num}.` : `${num}...`;
+    const div = document.createElement("div");
+    div.className = "flaggedItem";
+    const bestBit = m.bestMoveSan ? ` — better was <b>${m.bestMoveSan}</b>` : "";
+    div.innerHTML = `<div class="head"><span class="${gradeClass(m.grade)}">${label} ${m.san} (${m.grade})</span></div>` +
+      `<div>${bestBit}</div>` +
+      (m.bestLineSan && m.bestLineSan.length ? `<div class="line">${m.bestLineSan.join(" ")}</div>` : "");
+    div.addEventListener("click", () => { azViewPly = i + 1; renderAnalyzeBoard(); });
+    az.flaggedList.appendChild(div);
+  }
+
+  updatePracticeControls();
+}
+
+let allPuzzles = [];
+let puzzles = [];
+function updatePracticeControls() {
+  allPuzzles = analysis
+    .filter((m) => (m.grade === "mistake" || m.grade === "blunder") && m.bestMoveUci);
+  const side = az.practiceSideSelect.value;
+  puzzles = allPuzzles.filter((m) => side === "both" || sideToMove(m.fenBefore) === side);
+  if (allPuzzles.length === 0) {
+    az.practiceSideRow.style.display = "none";
+    az.practiceBtn.style.display = "none";
+    return;
+  }
+  az.practiceSideRow.style.display = "flex";
+  az.practiceBtn.style.display = "inline-block";
+  az.practiceBtn.disabled = puzzles.length === 0;
+  az.practiceBtn.textContent = puzzles.length > 0
+    ? `Practice My Mistakes (${puzzles.length}) →` : "No mistakes for this side";
+}
+az.practiceSideSelect.addEventListener("change", updatePracticeControls);
+az.practiceBtn.addEventListener("click", enterPuzzleMode);
+
+// Eval graph: Y axis is win probability (Lichess curve); linear centipawns would flatten most games near zero.
+const EVAL_GRADE_COLORS = { inaccuracy: "#e3c96b", mistake: "#f0a860", blunder: "#e05555" };
+const EVAL_GRADE_RADIUS = { inaccuracy: 3.5, mistake: 4.5, blunder: 5.5 };
+const EVAL_GRADE_MARK = { good: "", inaccuracy: "?!", mistake: "?", blunder: "??" };
+const EVAL_GRADE_NAME = { good: "Good", inaccuracy: "Inaccuracy", mistake: "Mistake", blunder: "Blunder" };
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+let evalHoverPly = null;
+let evalDragging = false;
+let evalGeom = null;       // { left, plotW, n } from the last draw, for hit-testing
+
+// White's point of view in centipawns, clamped; mates pin to the edge.
+function evalWhiteCp(cp, mate) {
+  if (typeof cp === "number") return Math.max(-3000, Math.min(3000, cp));
+  if (typeof mate === "number") return mate > 0 ? 3000 : mate < 0 ? -3000 : 0;
+  return 0;
+}
+function evalWinPct(cp) {
+  return 50 + 50 * (2 / (1 + Math.exp(-0.00368208 * cp)) - 1);
+}
+// "+1.25", "−0.40", "#3" (White mates in 3), "−#2" (Black mates in 2)
+function evalLabel(cp, mate) {
+  if (typeof cp !== "number") {
+    if (typeof mate !== "number") return "?";
+    return (mate < 0 ? "−" : "") + "#" + Math.abs(mate);
+  }
+  const v = cp / 100;
+  const t = Math.abs(v).toFixed(2);
+  return v > 0 ? "+" + t : v < 0 ? "−" + t : "0.00";
+}
+
+function svgEl(name, attrs, parent) {
+  const e = document.createElementNS(SVG_NS, name);
+  for (const k in attrs) e.setAttribute(k, String(attrs[k]));
+  if (parent) parent.appendChild(e);
+  return e;
+}
+
+// Follows the "Grade whose moves" selector, same as the move list.
+function evalMoveVisible(m) {
+  const side = az.sideSelect.value;
+  return side === "both" || sideToMove(m.fenBefore) === side;
+}
+
+function drawEvalGraph() {
+  const svg = az.evalGraph;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  if (!analysis || analysis.length === 0) {
+    az.evalBox.style.display = "none";
+    evalGeom = null;
+    return;
+  }
+  az.evalBox.style.display = "block";
+
+  const W = Math.round(svg.clientWidth);
+  const H = Math.round(svg.clientHeight);
+  if (W < 80 || H < 40) return; // not laid out yet; the ResizeObserver redraws
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+
+  const n = analysis.length;
+  const left = 30, right = 10, top = 10, bottom = 20;
+  const plotW = W - left - right;
+  const plotH = H - top - bottom;
+  const mid = top + plotH / 2;
+  const xAt = (ply) => left + (n === 0 ? 0 : (ply / n) * plotW);
+  const yAt = (cp) => top + plotH * (1 - evalWinPct(cp) / 100);
+  evalGeom = { left, plotW, n };
+
+  const cps = [evalWhiteCp(analysis[0].evalBeforeCp, analysis[0].mateBefore)]
+    .concat(analysis.map((m) => evalWhiteCp(m.evalAfterCp, m.mateAfter)));
+  const pts = cps.map((cp, i) => [xAt(i), yAt(cp)]);
+
+  for (const [cp, label] of [[300, "+3"], [100, "+1"], [0, "0"], [-100, "−1"], [-300, "−3"]]) {
+    const y = yAt(cp);
+    svgEl("line", {
+      x1: left, x2: left + plotW, y1: y, y2: y,
+      stroke: cp === 0 ? "#5a5f6b" : "rgba(255,255,255,0.08)",
+      "stroke-width": 1, "stroke-dasharray": cp === 0 ? "" : "2 3",
+    }, svg);
+    const t = svgEl("text", {
+      x: left - 6, y: y + 3, "text-anchor": "end", "font-size": 9.5, fill: "#7d8390",
+    }, svg);
+    t.textContent = label;
+  }
+
+  const moves = n / 2;
+  const step = moves <= 10 ? 2 : moves <= 30 ? 5 : moves <= 60 ? 10 : 20;
+  for (let mv = step; mv * 2 <= n; mv += step) {
+    const x = xAt(mv * 2);
+    svgEl("line", { x1: x, x2: x, y1: top + plotH, y2: top + plotH + 3, stroke: "#5a5f6b" }, svg);
+    const t = svgEl("text", {
+      x, y: H - 5, "text-anchor": "middle", "font-size": 9.5, fill: "#7d8390",
+    }, svg);
+    t.textContent = String(mv);
+  }
+
+  const defs = svgEl("defs", {}, svg);
+  const clipUp = svgEl("clipPath", { id: "evalClipUp" }, defs);
+  svgEl("rect", { x: left, y: top, width: plotW, height: mid - top }, clipUp);
+  const clipDown = svgEl("clipPath", { id: "evalClipDown" }, defs);
+  svgEl("rect", { x: left, y: mid, width: plotW, height: top + plotH - mid }, clipDown);
+  const areaD =
+    `M${pts[0][0].toFixed(1)},${mid} ` +
+    pts.map((p) => `L${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ") +
+    ` L${pts[pts.length - 1][0].toFixed(1)},${mid} Z`;
+  svgEl("path", { d: areaD, fill: "rgba(231,233,238,0.65)", "clip-path": "url(#evalClipUp)" }, svg);
+  svgEl("path", { d: areaD, fill: "rgba(0,0,0,0.55)", "clip-path": "url(#evalClipDown)" }, svg);
+
+  svgEl("polyline", {
+    points: pts.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" "),
+    fill: "none", stroke: "#8fb0ff", "stroke-width": 1.8,
+    "stroke-linejoin": "round", "stroke-linecap": "round",
+  }, svg);
+
+  if (evalHoverPly !== null && evalHoverPly !== azViewPly) {
+    svgEl("line", {
+      x1: xAt(evalHoverPly), x2: xAt(evalHoverPly), y1: top, y2: top + plotH,
+      stroke: "rgba(255,255,255,0.35)", "stroke-width": 1,
+    }, svg);
+  }
+
+  const cx = xAt(azViewPly);
+  svgEl("line", {
+    x1: cx, x2: cx, y1: top, y2: top + plotH, stroke: "#5a86f5", "stroke-width": 1.5,
+  }, svg);
+
+  // Drawn last so the dots sit on top.
+  for (let i = 0; i < n; i++) {
+    const m = analysis[i];
+    const color = EVAL_GRADE_COLORS[m.grade];
+    if (!color || !evalMoveVisible(m)) continue;
+    const [x, y] = pts[i + 1];
+    const r = EVAL_GRADE_RADIUS[m.grade];
+    if (i + 1 === azViewPly || i + 1 === evalHoverPly) {
+      svgEl("circle", { cx: x, cy: y, r: r + 3.5, fill: "none", stroke: "#fff", "stroke-width": 1.5 }, svg);
+    }
+    svgEl("circle", { cx: x, cy: y, r, fill: color, stroke: "#16181d", "stroke-width": 1.5 }, svg);
+  }
+  const curMove = azViewPly > 0 ? analysis[azViewPly - 1] : null;
+  if (!curMove || !EVAL_GRADE_COLORS[curMove.grade] || !evalMoveVisible(curMove)) {
+    const [x, y] = pts[azViewPly];
+    svgEl("circle", { cx: x, cy: y, r: 3.5, fill: "#fff", stroke: "#5a86f5", "stroke-width": 2 }, svg);
+  }
+
+  renderEvalInfo(evalHoverPly !== null ? evalHoverPly : azViewPly);
+  renderEvalLegend();
+}
+
+function renderEvalInfo(ply) {
+  const box = az.evalInfo;
+  box.textContent = "";
+  const add = (text, cls) => {
+    const s = document.createElement("span");
+    if (cls) s.className = cls;
+    s.textContent = text;
+    box.appendChild(s);
+    return s;
+  };
+
+  if (ply === 0) {
+    add("Start position", "evalMove");
+    add(` · eval ${evalLabel(analysis[0].evalBeforeCp, analysis[0].mateBefore)}`, "evalMuted");
+    return;
+  }
+  const m = analysis[ply - 1];
+  const num = Math.floor((ply - 1) / 2) + 1;
+  const label = (ply - 1) % 2 === 0 ? `${num}.` : `${num}...`;
+  add(`${label} ${m.san}${EVAL_GRADE_MARK[m.grade]}`, "evalMove");
+  add(` ${EVAL_GRADE_NAME[m.grade]}`, gradeClass(m.grade));
+
+  const before = evalLabel(m.evalBeforeCp, m.mateBefore);
+  const after = evalLabel(m.evalAfterCp, m.mateAfter);
+  add(` · eval ${before === after ? after : `${before} → ${after}`}`, "evalMuted");
+
+  if (m.grade !== "good" && m.bestMoveSan) {
+    add(" · better: ", "evalMuted");
+    const b = document.createElement("b");
+    b.textContent = m.bestMoveSan;
+    box.appendChild(b);
+  }
+}
+
+function renderEvalLegend() {
+  const counts = { inaccuracy: 0, mistake: 0, blunder: 0 };
+  for (const m of analysis) if (m.grade in counts && evalMoveVisible(m)) counts[m.grade]++;
+  az.evalLegend.textContent = "";
+  for (const g of ["inaccuracy", "mistake", "blunder"]) {
+    const item = document.createElement("span");
+    item.className = "evalLegendItem";
+    const dot = document.createElement("span");
+    dot.className = "evalLegendDot";
+    dot.style.background = EVAL_GRADE_COLORS[g];
+    item.appendChild(dot);
+    const noun = counts[g] === 1 ? g : g === "inaccuracy" ? "inaccuracies" : g + "s";
+    item.appendChild(document.createTextNode(`${counts[g]} ${noun}`));
+    az.evalLegend.appendChild(item);
+  }
+}
+
+function evalPlyFromEvent(e) {
+  if (!analysis || !evalGeom) return null;
+  const rect = az.evalGraph.getBoundingClientRect();
+  const frac = (e.clientX - rect.left - evalGeom.left) / evalGeom.plotW;
+  return Math.max(0, Math.min(evalGeom.n, Math.round(frac * evalGeom.n)));
+}
+function evalSeek(ply) {
+  if (ply === null || ply === azViewPly) return;
+  azViewPly = ply;
+  renderAnalyzeBoard();
+}
+az.evalGraph.addEventListener("pointerdown", (e) => {
+  if (!analysis) return;
+  evalDragging = true;
+  az.evalGraph.setPointerCapture(e.pointerId);
+  evalHoverPly = evalPlyFromEvent(e);
+  evalSeek(evalHoverPly);
+});
+az.evalGraph.addEventListener("pointermove", (e) => {
+  if (!analysis) return;
+  const p = evalPlyFromEvent(e);
+  if (evalDragging) evalSeek(p);
+  if (p !== evalHoverPly) {
+    evalHoverPly = p;
+    drawEvalGraph();
+  }
+});
+const evalPointerDone = () => { evalDragging = false; };
+az.evalGraph.addEventListener("pointerup", evalPointerDone);
+az.evalGraph.addEventListener("pointercancel", evalPointerDone);
+az.evalGraph.addEventListener("pointerleave", () => {
+  if (evalDragging) return;
+  evalHoverPly = null;
+  if (analysis) drawEvalGraph();
+});
+// Also fires when the Analyze tab first becomes visible.
+new ResizeObserver(() => drawEvalGraph()).observe(az.evalGraph);
+
+// ---- Puzzle mode ----
+let puzzleMode = false;
+let puzzleIndex = 0;
+let puzzleSolved = 0;
+let puzzleLocked = false;
+let puzzleFen = null;
+let puzzleSelected = null;
+let puzzleLegalTargets = [];
+
+function isAcceptable(puzzle, uci) {
+  if (Array.isArray(puzzle.acceptableMoves) && puzzle.acceptableMoves.length > 0) {
+    return puzzle.acceptableMoves.includes(uci);
+  }
+  return uci === puzzle.bestMoveUci;
+}
+
+function enterPuzzleMode() {
+  if (puzzles.length === 0) return;
+  puzzleMode = true;
+  puzzleIndex = 0;
+  puzzleSolved = 0;
+  az.puzzlePanel.classList.add("show");
+  loadPuzzle();
+}
+
+function loadPuzzle() {
+  const puzzle = puzzles[puzzleIndex];
+  puzzleFen = puzzle.fenBefore;
+  puzzleSelected = null;
+  puzzleLegalTargets = [];
+  puzzleLocked = false;
+  az.puzzleFeedback.className = "";
+  az.puzzleFeedback.textContent = "";
+  az.puzzleActiveActions.style.display = "flex";
+  az.puzzleDoneActions.style.display = "none";
+  const mover = sideToMove(puzzleFen);
+  az.puzzleProgress.textContent = `Puzzle ${puzzleIndex + 1} / ${puzzles.length} — solved ${puzzleSolved}`;
+  az.puzzlePrompt.innerHTML = `Find the best move for <b>${mover}</b>.`;
+  renderPuzzleBoard(mover === "black");
+}
+
+function renderPuzzleBoard(flip) {
+  renderChessBoard(az.board, puzzleFen, {
+    flipped: flip,
+    selected: puzzleSelected,
+    legalTargets: puzzleLegalTargets,
+    interactive: !puzzleLocked,
+    onSquareClick: onPuzzleSquareClick,
+    onDropMove: (from, to) => { puzzleSelected = null; attemptPuzzleMove(from, to); },
+  });
+}
+
+async function onPuzzleSquareClick(sq) {
+  if (puzzleLocked) return;
+  const board = fenToBoard(puzzleFen);
+  const mover = sideToMove(puzzleFen);
+  const piece = board[sq];
+  const isOwn = piece && ((mover === "white" && piece === piece.toUpperCase()) ||
+                           (mover === "black" && piece === piece.toLowerCase()));
+
+  if (puzzleSelected && puzzleLegalTargets.includes(sq)) {
+    const from = puzzleSelected;
+    puzzleSelected = null;
+    puzzleLegalTargets = [];
+    await attemptPuzzleMove(from, sq);
+    return;
+  }
+  if (isOwn) {
+    puzzleSelected = sq;
+    try { puzzleLegalTargets = await invoke("scratch_legal_targets", { fen: puzzleFen, square: sq }); }
+    catch { puzzleLegalTargets = []; }
+    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+    return;
+  }
+  puzzleSelected = null;
+  puzzleLegalTargets = [];
+  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+}
+
+async function attemptPuzzleMove(from, to) {
+  const puzzle = puzzles[puzzleIndex];
+  let promotion = null;
+  if (needsPromotionMove(puzzleFen, from, to)) {
+    const mover = sideToMove(puzzleFen);
+    promotion = await askPromotion(az.promo, mover === "white" ? "w" : "b");
+    if (!promotion) { renderPuzzleBoard(mover === "black"); return; }
+  }
+  let result;
+  try {
+    result = await invoke("scratch_try_move", { fen: puzzleFen, from, to, promotion });
+  } catch {
+    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+    return;
+  }
+  if (isAcceptable(puzzle, result.uci)) {
+    handlePuzzleCorrect(puzzle);
+  } else {
+    az.puzzleFeedback.className = "show wrong";
+    az.puzzleFeedback.textContent = "Not quite — try again.";
+    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  }
+}
+
+function handlePuzzleCorrect(puzzle) {
+  puzzleLocked = true;
+  puzzleSolved += 1;
+  az.puzzleFeedback.className = "show correct";
+  const lineText = puzzle.bestLineSan && puzzle.bestLineSan.length
+    ? ` Line: ${puzzle.bestLineSan.join(" ")}` : "";
+  az.puzzleFeedback.textContent = "Correct!" + lineText;
+  az.puzzleProgress.textContent = `Puzzle ${puzzleIndex + 1} / ${puzzles.length} — solved ${puzzleSolved}`;
+  advanceOrFinishSoon();
+}
+
+function advanceOrFinishSoon() {
+  setTimeout(() => {
+    if (puzzleIndex + 1 < puzzles.length) {
+      puzzleIndex += 1;
+      loadPuzzle();
+    } else {
+      finishPuzzles();
+    }
+  }, 900);
+}
+
+az.puzzleRevealBtn.addEventListener("click", async () => {
+  if (puzzleLocked) return;
+  const puzzle = puzzles[puzzleIndex];
+  puzzleLocked = true;
+  az.puzzleFeedback.className = "show reveal";
+  const lineText = puzzle.bestLineSan && puzzle.bestLineSan.length
+    ? puzzle.bestLineSan.join(" ") : (puzzle.bestMoveSan || "(no line available)");
+  az.puzzleFeedback.textContent = `Answer: ${puzzle.bestMoveSan || lineText}. Line: ${lineText}`;
+  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+});
+
+az.puzzleExitBtn.addEventListener("click", exitPuzzleMode);
+az.puzzleExitBtn2.addEventListener("click", exitPuzzleMode);
+az.puzzleRestartBtn.addEventListener("click", enterPuzzleMode);
+
+function finishPuzzles() {
+  az.puzzleActiveActions.style.display = "none";
+  az.puzzleDoneActions.style.display = "flex";
+  az.puzzleProgress.textContent = `Done! Solved ${puzzleSolved} / ${puzzles.length}.`;
+  az.puzzlePrompt.textContent = "";
+}
+
+function exitPuzzleMode() {
+  puzzleMode = false;
+  az.puzzlePanel.classList.remove("show");
+  renderAnalyzeBoard();
+}
+
+renderAnalyzeBoard();
