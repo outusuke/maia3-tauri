@@ -157,7 +157,7 @@ impl Engine {
 
     /// `go nodes 1` on purpose: Maia is a single forward pass, so a deeper search wouldn't change its move.
     pub fn best_move(&mut self, fen: &str, timeout: Duration) -> Result<String, String> {
-        self.send(&format!("position fen {fen}"))?;
+        self.send(&format!("position fen {}", uci_fen(fen)))?;
         self.send("go nodes 1")?;
         let line = self
             .wait_for("bestmove", timeout)
@@ -181,7 +181,7 @@ impl Engine {
         timeout: Duration,
     ) -> Result<Vec<PvLine>, String> {
         self.set_multipv(multipv.max(1))?;
-        self.send(&format!("position fen {fen}"))?;
+        self.send(&format!("position fen {}", uci_fen(fen)))?;
         self.send(&format!("go depth {depth}"))?;
 
         let deadline = Instant::now() + timeout;
@@ -222,4 +222,14 @@ impl Drop for Engine {
         let _ = self.child.kill();
         let _ = self.child.wait();
     }
+}
+
+/// The chess crate writes the en passant square as the pawn's square (d4); UCI engines want the target (d3) and ignore anything else.
+fn uci_fen(fen: &str) -> String {
+    let mut fields: Vec<String> = fen.split_whitespace().map(String::from).collect();
+    if fields.len() >= 4 && fields[3].len() == 2 {
+        let rank = if fields[1] == "w" { '6' } else { '3' };
+        fields[3] = format!("{}{}", &fields[3][..1], rank);
+    }
+    fields.join(" ")
 }
