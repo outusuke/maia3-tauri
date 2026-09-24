@@ -295,15 +295,57 @@ button.primary:disabled { background: #33363f; color: #777; cursor: not-allowed;
   padding: 0;
   max-height: 45vh;
   overflow-y: auto;
-  display: grid;
-  grid-template-columns: auto 1fr 1fr;
-  gap: 2px 10px;
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
 }
-#move-list .move-num { color: var(--muted); text-align: right; }
-#move-list .move-san { cursor: pointer; padding: 1px 4px; border-radius: 4px; }
-#move-list .move-san:hover { background: var(--panel-bg-2); }
-#move-list .move-san.current { background: var(--accent); color: white; }
+.move-row {
+  display: grid;
+  grid-template-columns: 38px 1fr 1fr;
+  align-items: center;
+  padding: 1px 4px;
+  border-radius: 6px;
+}
+.move-row:nth-child(even) { background: rgba(255, 255, 255, 0.03); }
+.move-num { color: var(--muted); text-align: right; padding-right: 8px; font-size: 12.5px; }
+.move-san { cursor: pointer; padding: 3px 8px; border-radius: 5px; font-weight: 600; }
+.move-san.empty { cursor: default; color: var(--muted); font-weight: 400; }
+.move-san:not(.empty):hover { background: var(--panel-bg-2); }
+.move-san.current { background: var(--accent); color: white; }
+.move-empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+.move-result {
+  text-align: center;
+  font-weight: 600;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.move-result small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+#moves-meta { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+#moves-meta:empty { display: none; }
+
+.field { margin-bottom: 12px; }
+.fieldLabel { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+.segmented { display: flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.segmented button {
+  flex: 1;
+  background: var(--panel-bg-2);
+  color: var(--muted);
+  border: 0;
+  border-right: 1px solid var(--border);
+  padding: 7px 0;
+  font-size: 13px;
+  cursor: pointer;
+}
+.segmented button:last-child { border-right: 0; }
+.segmented button:hover { color: var(--text); }
+.segmented button.active { background: var(--accent); color: white; }
+
+#advanced-settings { margin-bottom: 12px; }
+#advanced-settings > summary { cursor: pointer; font-size: 13px; color: var(--muted); padding: 2px 0 10px; user-select: none; }
+#advanced-settings[open] > summary { color: var(--text); }
+
+#setup-summary { display: none; text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 400; }
+#setup-panel.collapsed #setup-summary { display: inline; }
 
 .tabBar { display: flex; gap: 6px; }
 .tabBtn {
@@ -430,9 +472,25 @@ button.small:disabled { opacity: 0.5; cursor: default; }
 #evalInfo { min-height: 20px; margin-top: 8px; font-size: 13px; }
 #evalInfo .evalMove { font-weight: 600; }
 #evalInfo .evalMuted { color: var(--muted); }
+#evalLine:empty { display: none; }
+#evalLine { margin-top: 2px; }
 #evalLegend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px; font-size: 12px; color: var(--muted); }
-.evalLegendItem { display: inline-flex; align-items: center; gap: 6px; }
+.evalLegendItem {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 1px solid transparent; border-radius: 6px;
+  padding: 2px 6px; margin: -2px -6px; font: inherit; color: inherit; cursor: pointer;
+}
+.evalLegendItem:not(:disabled):hover { background: var(--panel-bg-2); }
+.evalLegendItem.active { border-color: var(--border); background: var(--panel-bg-2); color: var(--text); }
+.evalLegendItem:disabled { cursor: default; opacity: 0.5; }
 .evalLegendDot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+.sideTag {
+  display: inline-block; font-size: 10.5px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.03em; padding: 1px 5px; border-radius: 4px; vertical-align: 1px;
+}
+.sideTag.white { background: #e9e9e9; color: #222; }
+.sideTag.black { background: #3a3a3a; color: #e9e9e9; }
 
 #puzzlePanelV2 { display: none; }
 #puzzlePanelV2.show { display: block; }

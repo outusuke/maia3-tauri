@@ -506,6 +506,11 @@ const els = {
   navPrev: document.getElementById("nav-prev"),
   navNext: document.getElementById("nav-next"),
   navEnd: document.getElementById("nav-end"),
+  setupPanel: document.getElementById("setup-panel"),
+  setupSummary: document.getElementById("setup-summary"),
+  advanced: document.getElementById("advanced-settings"),
+  advancedSummary: document.getElementById("advanced-summary"),
+  movesMeta: document.getElementById("moves-meta"),
 };
 
 let state = {
@@ -535,18 +540,58 @@ els.topPSlider.addEventListener("input", () => { els.topPValue.textContent = els
 els.startBtn.addEventListener("click", startGame);
 els.flipBtn.addEventListener("click", () => { flipped = !flipped; renderPlayBoard(); });
 els.resignBtn.addEventListener("click", resign);
-els.clearFenBtn.addEventListener("click", () => { els.startFenInput.value = ""; hideFenError(); });
+els.clearFenBtn.addEventListener("click", () => { els.startFenInput.value = ""; hideFenError(); updateAdvancedSummary(); });
 els.undoBtn.addEventListener("click", doUndo);
 els.copyPgnBtn.addEventListener("click", copyPgn);
-els.goLiveBtn.addEventListener("click", () => { viewPly = posHistory.length - 1; renderPlayBoard(); renderMoveList(); });
-els.navStart.addEventListener("click", () => { viewPly = 0; renderPlayBoard(); renderMoveList(); });
-els.navPrev.addEventListener("click", () => { viewPly = Math.max(0, viewPly - 1); renderPlayBoard(); renderMoveList(); });
-els.navNext.addEventListener("click", () => { viewPly = Math.min(posHistory.length - 1, viewPly + 1); renderPlayBoard(); renderMoveList(); });
-els.navEnd.addEventListener("click", () => { viewPly = posHistory.length - 1; renderPlayBoard(); renderMoveList(); });
+function viewMove(ply) {
+  viewPly = Math.max(0, Math.min(posHistory.length - 1, ply));
+  renderPlayBoard();
+  renderMoveList();
+}
+
+els.goLiveBtn.addEventListener("click", () => viewMove(posHistory.length - 1));
+els.navStart.addEventListener("click", () => viewMove(0));
+els.navPrev.addEventListener("click", () => viewMove(viewPly - 1));
+els.navNext.addEventListener("click", () => viewMove(viewPly + 1));
+els.navEnd.addEventListener("click", () => viewMove(posHistory.length - 1));
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  if (!document.getElementById("playTab").classList.contains("active")) return;
+  if (document.getElementById("setup-overlay").classList.contains("show")) return;
+  if (e.target.closest && e.target.closest("input, textarea, select, summary")) return;
+  const targets = { ArrowLeft: viewPly - 1, ArrowRight: viewPly + 1, Home: 0, End: posHistory.length - 1 };
+  if (!(e.key in targets)) return;
+  e.preventDefault();
+  viewMove(targets[e.key]);
+});
+
+function selectedSide() {
+  return els.sideSelect.querySelector("button.active").dataset.value;
+}
+
+els.sideSelect.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-value]");
+  if (!btn) return;
+  els.sideSelect.querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("active", b === btn);
+    b.setAttribute("aria-checked", String(b === btn));
+  });
+});
+
+function updateAdvancedSummary() {
+  els.advancedSummary.textContent = els.startFenInput.value.trim() ? "Advanced · custom position" : "Advanced";
+}
+els.startFenInput.addEventListener("input", updateAdvancedSummary);
+els.setupPanel.querySelector("h2").addEventListener("click", () => els.setupPanel.classList.toggle("collapsed"));
 els.analyzeThisBtn.addEventListener("click", sendGameToAnalyze);
 
 function hideFenError() { els.fenError.style.display = "none"; els.fenError.textContent = ""; }
-function showFenError(msg) { els.fenError.textContent = msg; els.fenError.style.display = "block"; }
+function showFenError(msg) {
+  els.fenError.textContent = msg;
+  els.fenError.style.display = "block";
+  els.advanced.open = true;
+}
 
 // Always ONNX; only the first-launch screen in index.html still touches the "maia3.backend" key.
 const ENGINE_BACKEND = "onnx";
@@ -582,6 +627,10 @@ async function listenSetupProgress(task, handler) {
   });
 }
 
+function startLabel() {
+  return gameStarted && !isGameOver() ? "Start new game" : "Start game";
+}
+
 async function startGame() {
   els.startBtn.disabled = true;
   els.startBtn.textContent = "Loading model…";
@@ -595,14 +644,14 @@ async function startGame() {
       } catch (err) {
         showFenError(String(err));
         els.startBtn.disabled = false;
-        els.startBtn.textContent = "Start game";
+        els.startBtn.textContent = startLabel();
         setStatus("Fix the Start FEN before starting.");
         return;
       }
     }
     hideFenError();
 
-    const chosen = els.sideSelect.value;
+    const chosen = selectedSide();
     playerColor = chosen === "random" ? (Math.random() < 0.5 ? "white" : "black") : chosen;
     flipped = playerColor === "black";
 
@@ -633,6 +682,9 @@ async function startGame() {
     gameStarted = true;
     selected = null;
     legalTargets = [];
+    els.setupSummary.textContent = `${playerColor === "white" ? "White" : "Black"} · ${elo} · ${model.replace("maia3-", "").toUpperCase()}`;
+    els.movesMeta.textContent = `You (${playerColor}) vs Maia-3 · ${elo} Elo`;
+    els.setupPanel.classList.add("collapsed");
     renderPlayBoard();
     renderMoveList();
     const tempNote = Number(temperature) > 0 ? `, temp ${temperature}` : ", greedy";
@@ -645,7 +697,7 @@ async function startGame() {
     setStatus(`Could not start engine: ${err}`);
   } finally {
     els.startBtn.disabled = false;
-    els.startBtn.textContent = "Start game";
+    els.startBtn.textContent = startLabel();
   }
 }
 
@@ -656,6 +708,7 @@ async function resign() {
   state.winner = playerColor === "white" ? "black" : "white";
   await invoke("stop_engine").catch(() => {});
   renderPlayBoard();
+  renderMoveList();
   setStatus("You resigned.");
 }
 
@@ -736,7 +789,15 @@ function findKingInCheckSquare(board, turnColor) {
   return null;
 }
 
+let gameOverHandled = false;
+
 function updateControls() {
+  if (isGameOver()) {
+    if (!gameOverHandled) els.setupPanel.classList.remove("collapsed");
+    gameOverHandled = true;
+  } else {
+    gameOverHandled = false;
+  }
   els.historyNotice.classList.toggle("show", !isLive());
   els.navStart.disabled = viewPly === 0;
   els.navPrev.disabled = viewPly === 0;
@@ -817,29 +878,88 @@ async function onPlaySquareClick(sq) {
   renderPlayBoard();
 }
 
-function renderMoveList() {
-  els.moveList.innerHTML = "";
-  const history = state.sanHistory || [];
-  for (let i = 0; i < history.length; i += 2) {
-    const num = i / 2 + 1;
-    const numEl = document.createElement("li");
-    numEl.className = "move-num";
-    numEl.textContent = `${num}.`;
-    els.moveList.appendChild(numEl);
+// Numbering follows the start position, which can be Black to move or mid-game.
+function movePairs(sans, fen) {
+  const parts = (fen || STANDARD_FEN).split(" ");
+  let isWhite = parts[1] !== "b";
+  let num = parseInt(parts[5], 10) || 1;
+  const rows = [];
+  let row = null;
+  sans.forEach((san, i) => {
+    if (!row || isWhite) {
+      row = { num, white: null, black: null };
+      rows.push(row);
+    }
+    row[isWhite ? "white" : "black"] = { san, ply: i + 1 };
+    if (!isWhite) num += 1;
+    isWhite = !isWhite;
+  });
+  return rows;
+}
 
-    [history[i], history[i + 1]].forEach((san, offset) => {
-      const li = document.createElement("li");
-      li.className = "move-san";
-      li.textContent = san || "";
-      const ply = i + offset + 1;
-      if (san) {
-        if (ply === viewPly) li.classList.add("current");
-        li.addEventListener("click", () => { viewPly = ply; renderPlayBoard(); renderMoveList(); });
-      }
-      els.moveList.appendChild(li);
-    });
+function gameResult(st) {
+  if (st.status === "checkmate" || st.status === "resigned") return st.winner === "white" ? "1-0" : "0-1";
+  if (st.status === "stalemate" || st.status === "draw") return "1/2-1/2";
+  return null;
+}
+
+const RESULT_REASON = { checkmate: "checkmate", resigned: "resignation", stalemate: "stalemate", draw: "draw" };
+
+function renderMoveList() {
+  const list = els.moveList;
+  list.innerHTML = "";
+  const history = state.sanHistory || [];
+  if (history.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "move-empty";
+    empty.textContent = "No moves yet.";
+    list.appendChild(empty);
+    return;
   }
-  els.moveList.scrollTop = els.moveList.scrollHeight;
+
+  movePairs(history, startFen).forEach((row) => {
+    const li = document.createElement("li");
+    li.className = "move-row";
+    const numEl = document.createElement("span");
+    numEl.className = "move-num";
+    numEl.textContent = `${row.num}.`;
+    li.appendChild(numEl);
+
+    [row.white, row.black].forEach((m, side) => {
+      const cell = document.createElement("span");
+      cell.className = "move-san";
+      if (m) {
+        cell.textContent = m.san;
+        if (m.ply === viewPly) cell.classList.add("current");
+        cell.addEventListener("click", () => viewMove(m.ply));
+      } else {
+        cell.classList.add("empty");
+        // A missing White move only happens when the game starts with Black to move.
+        cell.textContent = side === 0 ? "…" : "";
+      }
+      li.appendChild(cell);
+    });
+    list.appendChild(li);
+  });
+
+  const result = gameResult(state);
+  if (result) {
+    const li = document.createElement("li");
+    li.className = "move-result";
+    li.textContent = result;
+    const why = document.createElement("small");
+    why.textContent = RESULT_REASON[state.status] || "";
+    li.appendChild(why);
+    list.appendChild(li);
+  }
+
+  // Keep the current move in view without scrolling anything outside the list.
+  const cur = list.querySelector(".current");
+  if (!cur) { list.scrollTop = viewPly === 0 ? 0 : list.scrollHeight; return; }
+  const lr = list.getBoundingClientRect();
+  const cr = cur.getBoundingClientRect();
+  if (cr.top < lr.top) list.scrollTop -= lr.top - cr.top;
+  else if (cr.bottom > lr.bottom) list.scrollTop += cr.bottom - lr.bottom;
 }
 
 async function doUndo() {
@@ -863,23 +983,23 @@ async function doUndo() {
   if (!isGameOver() && state.turn !== playerColor) triggerEngineMove();
 }
 
-function sanHistoryToPgn(sanHistory, fenForHeader) {
+function sanHistoryToPgn(sanHistory, fenForHeader, result) {
   const lines = [];
   if (fenForHeader && fenForHeader !== STANDARD_FEN) {
     lines.push('[SetUp "1"]');
     lines.push(`[FEN "${fenForHeader}"]`);
   }
-  let text = "";
-  for (let i = 0; i < sanHistory.length; i += 2) {
-    const num = i / 2 + 1;
-    text += `${num}. ${sanHistory[i] || ""} ${sanHistory[i + 1] || ""} `;
-  }
-  lines.push(text.trim());
+  const parts = movePairs(sanHistory, fenForHeader).map((row) => {
+    if (row.white) return `${row.num}. ${row.white.san}${row.black ? " " + row.black.san : ""}`;
+    return `${row.num}... ${row.black.san}`;
+  });
+  if (result) parts.push(result);
+  lines.push(parts.join(" "));
   return lines.join("\n");
 }
 
 async function copyPgn() {
-  const pgn = sanHistoryToPgn(state.sanHistory, startFen);
+  const pgn = sanHistoryToPgn(state.sanHistory, startFen, gameResult(state));
   try {
     await navigator.clipboard.writeText(pgn);
     const original = els.copyPgnBtn.textContent;
@@ -897,6 +1017,7 @@ function sendGameToAnalyze() {
     startFen: startFen,
     sans: state.sanHistory.slice(),
     fens,
+    myColor: playerColor,
   });
   switchTab("analyze");
 }
@@ -1033,6 +1154,8 @@ ed.applyBtn.addEventListener("click", async () => {
     return;
   }
   els.startFenInput.value = fen;
+  els.advanced.open = true;
+  updateAdvancedSummary();
   hideFenError();
   ed.overlay.classList.remove("show");
   setStatus("Position loaded — click New Game to play it.");
@@ -1046,6 +1169,7 @@ const az = {
   evalGraph: document.getElementById("evalGraph"),
   evalBox: document.getElementById("evalGraphBox"),
   evalInfo: document.getElementById("evalInfo"),
+  evalLine: document.getElementById("evalLine"),
   evalLegend: document.getElementById("evalLegend"),
   pgnInput: document.getElementById("pgnInput"),
   loadBtn: document.getElementById("loadGameBtn"),
@@ -1266,6 +1390,9 @@ function loadAnalysisGame(game) {
   loadedGame = game;
   analysis = null;
   variation = null;
+  gradeFilter = null;
+  // Games sent from the Play tab know which side the person played; a pasted PGN doesn't, so leave "Both" then.
+  az.practiceSideSelect.value = game.myColor === "white" || game.myColor === "black" ? game.myColor : "both";
   azViewPly = game.sans.length;
   az.analyzeBtn.disabled = game.sans.length === 0;
   az.moveListPanel.style.display = "none";
@@ -1426,7 +1553,8 @@ function renderFlaggedList() {
 
     const head = document.createElement("div");
     head.className = "head";
-    head.innerHTML = `<span class="${gradeClass(m.grade)}">${label} ${m.san} (${m.grade})</span>`;
+    head.innerHTML = `<span class="sideTag ${mover}">${mover === "white" ? "White" : "Black"}</span> `
+      + `<span class="${gradeClass(m.grade)}">${label} ${m.san} (${m.grade})</span>`;
     div.appendChild(head);
 
     const better = document.createElement("div");
@@ -1510,9 +1638,26 @@ function evalLabel(cp, mate) {
 }
 
 // Follows the "Grade whose moves" selector, same as the move list.
+let gradeFilter = null; // which legend button is "active" for cycling; doesn't hide anything
 function evalMoveVisible(m) {
   const side = az.sideSelect.value;
   return side === "both" || sideToMove(m.fenBefore) === side;
+}
+
+// Indices of moves of grade `g` that the "Grade whose moves" selector currently includes, in play order.
+function gradeMatches(g) {
+  return analysis.reduce((acc, m, i) => { if (m.grade === g && evalMoveVisible(m)) acc.push(i); return acc; }, []);
+}
+
+// Jumps to the next move of this grade after the position on screen, wrapping back to the first.
+function jumpToGrade(g) {
+  const matches = gradeMatches(g);
+  if (matches.length === 0) return;
+  gradeFilter = g;
+  const next = matches.find((i) => i + 1 > azViewPly);
+  variation = null;
+  azViewPly = next === undefined ? matches[0] + 1 : next + 1;
+  renderAnalyzeBoard();
 }
 
 function drawEvalGraph() {
@@ -1648,25 +1793,40 @@ function renderEvalInfo(ply) {
 
   if (m.grade !== "good" && m.bestMoveSan) {
     add(" · better: ", "evalMuted");
-    const b = document.createElement("b");
+    const b = document.createElement(hasClickableLine(m) ? "span" : "b");
     b.textContent = m.bestMoveSan;
+    if (hasClickableLine(m)) {
+      b.className = "lineMove bestMove";
+      b.title = "Show the better move on the board";
+      b.addEventListener("click", (e) => { e.stopPropagation(); startVariation(ply - 1, 1); });
+    }
     box.appendChild(b);
+  }
+
+  az.evalLine.textContent = "";
+  if (m.grade !== "good" && hasClickableLine(m)) {
+    renderLineChips(az.evalLine, m, (n) => startVariation(ply - 1, n));
+    az.evalLine.dataset.ply = String(ply - 1);
   }
 }
 
 function renderEvalLegend() {
-  const counts = { inaccuracy: 0, mistake: 0, blunder: 0 };
-  for (const m of analysis) if (m.grade in counts && evalMoveVisible(m)) counts[m.grade]++;
   az.evalLegend.textContent = "";
   for (const g of ["inaccuracy", "mistake", "blunder"]) {
-    const item = document.createElement("span");
+    const matches = gradeMatches(g);
+    const item = document.createElement("button");
+    item.type = "button";
     item.className = "evalLegendItem";
+    item.classList.toggle("active", gradeFilter === g);
+    item.disabled = matches.length === 0;
     const dot = document.createElement("span");
     dot.className = "evalLegendDot";
     dot.style.background = EVAL_GRADE_COLORS[g];
     item.appendChild(dot);
-    const noun = counts[g] === 1 ? g : g === "inaccuracy" ? "inaccuracies" : g + "s";
-    item.appendChild(document.createTextNode(`${counts[g]} ${noun}`));
+    const noun = matches.length === 1 ? g : g === "inaccuracy" ? "inaccuracies" : g + "s";
+    item.appendChild(document.createTextNode(`${matches.length} ${noun}`));
+    item.title = matches.length ? `Jump to the next ${g}` : "";
+    item.addEventListener("click", () => jumpToGrade(g));
     az.evalLegend.appendChild(item);
   }
 }
