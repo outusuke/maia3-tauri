@@ -124,6 +124,16 @@
         </div>
         <div class="btnRow" style="justify-content:center;">
           <button class="small" id="aFlipBtn" title="Flip board">⇅ Flip</button>
+          <label class="arrowToggle" title="Blue: engine's best move. Red: the move that was played, when it wasn't good. Right-click and drag on the board to draw your own arrows.">
+            <input type="checkbox" id="aArrowToggle" checked> Arrows
+          </label>
+        </div>
+        <div id="variationBar" style="display:none;">
+          <div class="variationHead">
+            <span id="variationTitle"></span>
+            <button class="small" id="variationExitBtn" title="Return to the game position">Back to game</button>
+          </div>
+          <div id="variationLine" class="lineMoves"></div>
         </div>
         <div id="evalGraphBox" style="display:none;">
           <div id="evalGraphWrap"><svg id="evalGraph"></svg></div>
@@ -134,7 +144,7 @@
 
       <aside id="analyzeSidebar" style="width:340px; flex-shrink:0; display:flex; flex-direction:column; gap:16px;">
 
-        <div class="panel" id="loadPanel">
+        <div class="panel collapsible" id="loadPanel">
           <h2>Load a game</h2>
           <div class="subRow">
             <textarea id="pgnInput" rows="4" placeholder="Paste a PGN, or a plain movetext string like &#10;1. e4 e5 2. Nf3 Nc6 ..."></textarea>
@@ -145,7 +155,7 @@
           <div id="loadError" style="color:#ff8a8a; font-size:12.5px; margin-top:6px;"></div>
         </div>
 
-        <div class="panel" id="analyzeControlsPanel">
+        <div class="panel collapsible" id="analyzeControlsPanel">
           <h2>Analyze</h2>
           <div class="subRow">
             <label for="analyzeSideSelect">Grade whose moves</label>
@@ -165,19 +175,6 @@
           </div>
           <button id="analyzeGameBtn" class="primary" disabled>Analyze Game</button>
           <div id="analyzeStatus" class="hint" style="margin-top:8px;"></div>
-        </div>
-
-        <div class="panel" id="moveListPanel" style="display:none;">
-          <div class="inlineRow" style="justify-content:space-between;">
-            <h2 style="margin:0;">Moves</h2>
-            <div class="navBtns">
-              <button class="navBtn" id="aNavStart">|&laquo;</button>
-              <button class="navBtn" id="aNavPrev">&laquo;</button>
-              <button class="navBtn" id="aNavNext">&raquo;</button>
-              <button class="navBtn" id="aNavEnd">&raquo;|</button>
-            </div>
-          </div>
-          <div id="analyzeMoveList"></div>
         </div>
 
         <div class="panel" id="flaggedPanel" style="display:none;">
@@ -201,12 +198,26 @@
           <div id="puzzleFeedbackV2"></div>
           <div class="btnRow" id="puzzleActiveActions">
             <button class="small" id="puzzleRevealBtn">Reveal Answer</button>
+            <button class="small" id="puzzleNextBtn" style="display:none;">Next puzzle →</button>
             <button class="small" id="puzzleExitBtn">Exit Practice</button>
           </div>
           <div class="btnRow" id="puzzleDoneActions" style="display:none;">
             <button class="small" id="puzzleRestartBtn">Practice Again</button>
             <button class="small" id="puzzleExitBtn2">Back to Review</button>
           </div>
+        </div>
+
+        <div class="panel" id="moveListPanel" style="display:none;">
+          <div class="inlineRow" style="justify-content:space-between;">
+            <h2 style="margin:0;">Moves</h2>
+            <div class="navBtns">
+              <button class="navBtn" id="aNavStart">|&laquo;</button>
+              <button class="navBtn" id="aNavPrev">&laquo;</button>
+              <button class="navBtn" id="aNavNext">&raquo;</button>
+              <button class="navBtn" id="aNavEnd">&raquo;|</button>
+            </div>
+          </div>
+          <div id="analyzeMoveList"></div>
         </div>
       </aside>
     </div>

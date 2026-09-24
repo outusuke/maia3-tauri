@@ -83,6 +83,13 @@ main {
   align-items: center;
 }
 
+#board, #analyzeBoard, #editor-board {
+  position: relative;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 #board, #analyzeBoard {
   display: grid;
   grid-template-columns: repeat(8, min(9vh, 74px));
@@ -444,3 +451,74 @@ button.small:disabled { opacity: 0.5; cursor: default; }
 @media (min-width: 860px) {
   .tabPanel.active { align-items: flex-start; }
 }
+
+.square, .square *, .tray, .tray * , .drag-ghost {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+body.is-dragging, body.is-dragging * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  cursor: grabbing !important;
+}
+
+.board-arrows {
+  position: absolute;
+  left: 0; top: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+  z-index: 5;
+  overflow: visible;
+}
+.arrowToggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--muted); cursor: pointer; user-select: none;
+}
+
+.lineMoves { line-height: 1.9; }
+.lineNum { color: var(--muted); margin-right: 3px; }
+.lineLabel { color: var(--muted); margin-right: 5px; }
+.lineMove {
+  display: inline-block;
+  padding: 0 5px;
+  margin-right: 3px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--text);
+  font-weight: 600;
+}
+.lineMove:hover { background: rgba(90, 134, 245, 0.28); }
+.lineMove.active { background: #3b6ef2; color: #fff; }
+.flaggedItem .line.lineMoves { font-family: monospace; font-size: 12px; margin-top: 4px; }
+.puzzleLine { margin-top: 6px; font-family: monospace; }
+.puzzleLine .lineMoves { display: inline; }
+
+#variationBar {
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--panel-bg-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+}
+.variationHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 600; }
+#variationLine { font-family: monospace; font-size: 12.5px; }
+
+.panel.collapsible > h2 {
+  display: flex;
+  justify-content: space-between;
+  cursor: pointer;
+  user-select: none;
+}
+.panel.collapsible > h2::after { content: "▾"; }
+.panel.collapsible.collapsed > h2 { margin-bottom: 0; }
+.panel.collapsible.collapsed > h2::after { content: "▸"; }
+.panel.collapsible.collapsed > :not(h2) { display: none; }
+
+#flaggedList { max-height: 38vh; overflow-y: auto; }
+#analyzeSidebar.practicing #flaggedPanel,
+#analyzeSidebar.practicing #moveListPanel { display: none !important; }

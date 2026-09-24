@@ -1,4 +1,4 @@
-use chess::{Board, ChessMove};
+use chess::{Board, ChessMove, Error};
 use serde::Serialize;
 use std::str::FromStr;
 
@@ -59,7 +59,7 @@ pub fn parse_pgn(pgn: &str) -> Result<ParsedGame, String> {
         if clean.is_empty() {
             continue;
         }
-        let mv = ChessMove::from_san(&board, &clean)
+        let mv = san_to_move(&board, &clean)
             .map_err(|e| format!("could not parse move '{tok}' (position {}): {e}", board))?;
         ucis.push(mv.to_string());
         sans.push(clean);
@@ -100,7 +100,7 @@ pub fn parse_sans(sans_in: &[String], start_fen: Option<&str>) -> Result<ParsedG
         if clean.is_empty() {
             continue;
         }
-        let mv = ChessMove::from_san(&board, &clean)
+        let mv = san_to_move(&board, &clean)
             .map_err(|e| format!("could not replay move '{tok}' (position {}): {e}", board))?;
         ucis.push(mv.to_string());
         sans.push(clean);
@@ -116,6 +116,12 @@ pub fn parse_sans(sans_in: &[String], start_fen: Option<&str>) -> Result<ParsedG
         fens,
         result: None,
     })
+}
+
+/// chess's `from_san` only takes en passant captures written with an " e.p." suffix, which PGN doesn't use.
+fn san_to_move(board: &Board, san: &str) -> Result<ChessMove, Error> {
+    ChessMove::from_san(board, san)
+        .or_else(|first| ChessMove::from_san(board, &format!("{san} e.p.")).map_err(|_| first))
 }
 
 fn parse_header(line: &str) -> Option<(String, String)> {

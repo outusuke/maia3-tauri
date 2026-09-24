@@ -32,6 +32,10 @@ pub struct MoveAnalysis {
     pub best_move_uci: Option<String>,
     pub best_move_san: Option<String>,
     pub best_line_san: Vec<String>,
+    /// UCI form of `best_line_san`, used for arrows.
+    pub best_line_uci: Vec<String>,
+    /// Position after each line move, so the UI can step through it.
+    pub best_line_fens: Vec<String>,
     /// UCI moves within the "good" eval window of the best move; any of them solves the puzzle.
     pub acceptable_moves: Vec<String>,
 }
@@ -145,7 +149,7 @@ pub fn analyze_game(
                 .filter(|m| board.legal(*m))
                 .map(|m| move_to_san(&board, m))
         });
-        let best_line_san = sanify_line(&board, &best.pv);
+        let (best_line_san, best_line_uci, best_line_fens) = sanify_line(&board, &best.pv);
 
         let acceptable_moves: Vec<String> = lines
             .iter()
@@ -170,6 +174,8 @@ pub fn analyze_game(
             best_move_uci,
             best_move_san,
             best_line_san,
+            best_line_uci,
+            best_line_fens,
             acceptable_moves,
         });
 
@@ -179,10 +185,12 @@ pub fn analyze_game(
     Ok(out)
 }
 
-/// Stops quietly if the PV goes illegal, which can happen right at mate.
-fn sanify_line(start: &Board, ucis: &[String]) -> Vec<String> {
+/// (SAN, UCI, FEN after) per move; stops early if the PV goes illegal, which can happen right at mate.
+fn sanify_line(start: &Board, ucis: &[String]) -> (Vec<String>, Vec<String>, Vec<String>) {
     let mut board = start.clone();
-    let mut out = Vec::new();
+    let mut sans = Vec::new();
+    let mut moves = Vec::new();
+    let mut fens = Vec::new();
     for u in ucis.iter().take(8) {
         let Ok(mv) = ChessMove::from_str(u) else {
             break;
@@ -190,8 +198,10 @@ fn sanify_line(start: &Board, ucis: &[String]) -> Vec<String> {
         if !board.legal(mv) {
             break;
         }
-        out.push(move_to_san(&board, mv));
+        sans.push(move_to_san(&board, mv));
+        moves.push(u.clone());
         board = board.make_move_new(mv);
+        fens.push(format!("{board}"));
     }
-    out
+    (sans, moves, fens)
 }
