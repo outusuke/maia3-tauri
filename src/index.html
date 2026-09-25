@@ -7,46 +7,64 @@
   :root { color-scheme: dark; }
   body {
     margin: 0; min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 1.25rem;
+    align-items: center; gap: 1.5rem;
     background: #16181d; color: #e7e9ee;
     font: 15px/1.5 -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
     padding: 2rem; box-sizing: border-box;
   }
-  h1 { font-size: 1.4rem; margin: 0; }
-  p.sub { color: #9aa0ab; margin: -0.5rem 0 0; text-align: center; max-width: 34rem; }
+  .page { width: min(680px, 100%); display: flex; flex-direction: column; gap: 1.5rem; }
+  .titleRow { display: flex; align-items: center; gap: 10px; margin-bottom: -0.75rem; }
+  .titleRow h1 { font-size: 1.4rem; margin: 0; }
+  p.sub { color: #9aa0ab; margin: 0; max-width: 34rem; }
+  section h2 { font-size: 1rem; margin: 0 0 2px; }
+  section p.desc { font-size: 0.82rem; color: #9aa0ab; margin: 0 0 12px; }
+
+  .modelGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
   .card {
-    width: min(520px, 92vw);
     background: #1b1e24; border: 1px solid #2a2d35; border-radius: 12px;
-    padding: 16px 18px;
+    padding: 14px 16px;
   }
-  .card h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: .06em;
-    color: #9aa0ab; margin: 0 0 4px; }
-  .card p.desc { font-size: 0.8rem; color: #9aa0ab; margin: 0 0 10px; }
-  .choiceRow { display: flex; gap: 10px; margin-bottom: 10px; }
-  .choiceOption {
-    flex: 1; border: 1px solid #2a2d35; border-radius: 8px; padding: 10px 12px;
-    cursor: pointer; background: #20232b;
-  }
-  .choiceOption.selected { border-color: #3b6ef2; background: #202c4a; }
-  .choiceOption b { display: block; font-size: 0.9rem; margin-bottom: 2px; }
-  .choiceOption span { font-size: 0.76rem; color: #9aa0ab; }
-  .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
-  select {
-    background: #20232b; color: #e7e9ee; border: 1px solid #2a2d35;
-    border-radius: 6px; padding: 6px 8px; font-size: 0.85rem;
-  }
+  .modelCard { display: flex; flex-direction: column; }
+  .modelCard .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .modelCard .name { font-weight: 600; font-size: 0.95rem; margin: 0; }
+  .modelCard .kind { font-size: 0.78rem; color: #9aa0ab; margin: 2px 0 0; }
+  .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+  .badge.ready { background: #163a2a; color: #59d18a; }
+  .modelCard .meta { font-size: 0.76rem; color: #6c7280; margin: 10px 0 12px; }
+  .modelCard button { margin-top: auto; }
+
+  .stockfishCard { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .stockfishCard .info { display: flex; align-items: center; gap: 10px; }
+  .stockfishCard .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .stockfishCard .dot.ready { background: #59d18a; }
+  .stockfishCard .dot.notready { background: #6c7280; }
+  .stockfishCard .name { font-weight: 600; font-size: 0.9rem; margin: 0; }
+  .stockfishCard .meta { font-size: 0.78rem; color: #9aa0ab; margin: 2px 0 0; }
+
   button {
     background: #3b6ef2; color: white; border: none; border-radius: 8px;
-    padding: 0.6rem 1.2rem; font-size: 0.95rem; cursor: pointer;
+    padding: 0.55rem 1.1rem; font-size: 0.88rem; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   }
   button:disabled { opacity: 0.5; cursor: default; }
   button.secondary { background: #2a2d35; color: #cfd3da; }
-  pre#log {
-    width: min(640px, 90vw); height: 220px; overflow-y: auto;
-    background: #0e0f13; border: 1px solid #2a2d35; border-radius: 8px;
-    padding: 0.75rem; font-size: 0.78rem; color: #9aa0ab; white-space: pre-wrap;
+  button.danger { background: #2a2d35; color: #f0a0a0; }
+  button.danger:hover:not(:disabled) { background: #3a2828; }
+  button.ghost { background: none; color: #9aa0ab; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
+
+  .footer {
+    border-top: 1px solid #2a2d35; padding-top: 14px;
+    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
   }
-  #tasks { width: min(640px, 90vw); display: flex; flex-direction: column; gap: 10px; }
+  .footer .diskUsage { font-size: 0.78rem; color: #6c7280; }
+  .footer .actions { display: flex; gap: 10px; }
+
+  pre#log {
+    width: 100%; box-sizing: border-box; height: 200px; overflow-y: auto;
+    background: #0e0f13; border: 1px solid #2a2d35; border-radius: 8px;
+    padding: 0.75rem; font-size: 0.78rem; color: #9aa0ab; white-space: pre-wrap; margin: 0;
+  }
+  #tasks { display: flex; flex-direction: column; gap: 10px; }
   #tasks:empty { display: none; }
   .task { background: #1b1e24; border: 1px solid #2a2d35; border-radius: 12px; padding: 12px 14px; }
   .taskHead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
@@ -80,111 +98,236 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .taskNote { font-size: 0.76rem; color: #6c7280; margin-top: 8px; }
   .taskError { font-size: 0.78rem; color: #e5534b; margin-top: 8px; white-space: pre-wrap; }
-  details.logWrap { width: min(640px, 90vw); }
   details.logWrap summary { cursor: pointer; font-size: 0.8rem; color: #9aa0ab; margin-bottom: 6px; }
-  details.logWrap pre#log { width: 100%; box-sizing: border-box; }
-  .status { font-size: 0.85rem; color: #9aa0ab; }
-  .ok { color: #59d18a; }
-  .missing { color: #e3b341; }
-  .skipped { color: #6c7280; }
 </style>
 </head>
 <body>
-  <h1>♞ Maia3 Chess</h1>
+<div class="page">
+  <div class="titleRow">
+    <h1>♞ Maia3 Chess</h1>
+  </div>
   <p class="sub">
-    Play a local Maia-3 engine and, optionally, grade your games with
-    Stockfish. Maia-3 runs on ONNX Runtime — a light, fast-starting engine
-    with no PyTorch to install or keep around.
+    Play a local Maia-3 engine and, optionally, grade your games with Stockfish.
+    Maia-3 runs on ONNX Runtime — a light, fast-starting engine with no
+    PyTorch to install or keep around.
   </p>
 
-  <div class="card">
-    <h2>Maia-3 engine</h2>
-    <p class="desc">
-      Runs locally via ONNX Runtime. Setup exports the checkpoint once
-      (briefly needs Python to do the conversion); playing afterward never
-      touches PyTorch again.
-    </p>
-    <div class="row" id="modelRow">
-      <label for="onnxModelSelect" style="font-size: 0.8rem; color: #9aa0ab;">Model</label>
-      <select id="onnxModelSelect">
-        <option value="maia3-5m" selected>5M — fast, CPU-friendly</option>
-        <option value="maia3-23m">23M — more accurate</option>
-        <option value="maia3-79m">79M — most accurate, slower</option>
-      </select>
-    </div>
-  </div>
+  <section>
+    <h2>Maia-3 models</h2>
+    <p class="desc">Install any size you want to play against — each is independent, and the Play tab lets you pick between whichever ones you have.</p>
+    <div class="modelGrid" id="modelGrid"></div>
+  </section>
 
-  <div class="card">
+  <section>
     <h2>Stockfish</h2>
     <p class="desc">Powers move grading on the Analyze / Practice tab. Optional — you can play against Maia-3 without it.</p>
-    <div class="choiceRow">
-      <div class="choiceOption selected" id="stockfishYes" data-choice="yes">
-        <b>Install Stockfish</b>
-        <span>Downloads the official binary into this app's own folder.</span>
+    <div class="card stockfishCard" id="stockfishCard">
+      <div class="info">
+        <span class="dot" id="stockfishDot"></span>
+        <div>
+          <p class="name" id="stockfishName">Checking…</p>
+          <p class="meta" id="stockfishMeta"></p>
+        </div>
       </div>
-      <div class="choiceOption" id="stockfishNo" data-choice="no">
-        <b>Not now</b>
-        <span>Skip it — you can install it later from here.</span>
-      </div>
+      <button id="stockfishBtn" class="secondary" disabled>…</button>
     </div>
-  </div>
-
-  <div class="status" id="status">Checking setup…</div>
-
-  <div class="row">
-    <button id="setupBtn">Run first-time setup</button>
-    <button id="launchBtn" class="secondary">Launch</button>
-  </div>
+  </section>
 
   <div id="tasks" aria-live="polite"></div>
 
-  <details class="logWrap" open>
+  <details class="logWrap">
     <summary>Details</summary>
     <pre id="log"></pre>
   </details>
+
+  <div class="footer">
+    <span class="diskUsage" id="diskUsage"></span>
+    <div class="actions">
+      <button id="launchBtn" class="secondary">Launch</button>
+    </div>
+  </div>
+</div>
 
 <script>
   const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
 
-  const statusEl = document.getElementById("status");
-  const setupBtn = document.getElementById("setupBtn");
-  const launchBtn = document.getElementById("launchBtn");
+  const MODELS = [
+    { id: "maia3-5m", name: "5M", kind: "Fast, CPU-friendly", approxSize: "~90 MB" },
+    { id: "maia3-23m", name: "23M", kind: "More accurate", approxSize: "~340 MB" },
+    { id: "maia3-79m", name: "79M", kind: "Most accurate, slower", approxSize: "~1.1 GB" },
+  ];
+
+  const modelGrid = document.getElementById("modelGrid");
   const logEl = document.getElementById("log");
-  const onnxModelSelect = document.getElementById("onnxModelSelect");
-  const choiceOptions = document.querySelectorAll(".choiceOption");
+  const launchBtn = document.getElementById("launchBtn");
+  const diskUsageEl = document.getElementById("diskUsage");
+  const sf = {
+    card: document.getElementById("stockfishCard"),
+    dot: document.getElementById("stockfishDot"),
+    name: document.getElementById("stockfishName"),
+    meta: document.getElementById("stockfishMeta"),
+    btn: document.getElementById("stockfishBtn"),
+  };
 
-  // Always ONNX; stored so app.html doesn't need its own copy of the decision.
-  localStorage.setItem("maia3.backend", "onnx");
-
-  // Read back by the Play tab's Start button to know which model to launch.
-  const savedModel = localStorage.getItem("maia3.onnxModel");
-  if (savedModel) onnxModelSelect.value = savedModel;
-
-  let installStockfish = localStorage.getItem("maia3.installStockfish") !== "no";
-
-  function applyChoiceUI() {
-    choiceOptions.forEach((el) => {
-      const wants = el.dataset.choice === "yes";
-      el.classList.toggle("selected", wants === installStockfish);
-    });
+  function fmtBytes(n) {
+    if (!n) return "";
+    if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(0)} MB`;
+    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   }
-  choiceOptions.forEach((el) => {
-    el.addEventListener("click", () => {
-      installStockfish = el.dataset.choice === "yes";
-      localStorage.setItem("maia3.installStockfish", installStockfish ? "yes" : "no");
-      applyChoiceUI();
-      refreshStatus();
-    });
-  });
-  applyChoiceUI();
 
   function log(line) {
     logEl.textContent += line + "\n";
     logEl.scrollTop = logEl.scrollHeight;
   }
-
   listen("setup-log", (e) => log(e.payload));
+
+  // Only one install/remove runs at a time; every button disables while any of them is busy.
+  let busy = false;
+  const modelCards = {};
+
+  for (const model of MODELS) {
+    const card = document.createElement("div");
+    card.className = "card modelCard";
+    card.innerHTML = `
+      <div class="head">
+        <div>
+          <p class="name">${model.name}</p>
+          <p class="kind">${model.kind}</p>
+        </div>
+        <span class="badge ready" style="display:none;">Installed</span>
+      </div>
+      <p class="meta"></p>
+      <button></button>`;
+    modelGrid.appendChild(card);
+    modelCards[model.id] = {
+      root: card,
+      badge: card.querySelector(".badge"),
+      meta: card.querySelector(".meta"),
+      btn: card.querySelector("button"),
+    };
+  }
+
+  function renderModels(status) {
+    for (const model of MODELS) {
+      const ui = modelCards[model.id];
+      const ready = status.onnxModelsReady.includes(model.id);
+      const bytes = status.onnxModelBytes[model.id];
+      ui.badge.style.display = ready ? "" : "none";
+      ui.meta.textContent = ready
+        ? `${fmtBytes(bytes)} on disk`
+        : `Not installed · ${model.approxSize}`;
+      ui.btn.className = ready ? "danger" : "";
+      ui.btn.innerHTML = ready ? "Remove" : "Install";
+      ui.btn.disabled = busy;
+      ui.btn.onclick = () => (ready ? removeModel(model) : installModel(model));
+    }
+  }
+
+  function renderStockfish(status) {
+    sf.dot.className = "dot " + (status.stockfishReady ? "ready" : "notready");
+    if (status.stockfishReady) {
+      sf.name.textContent = "Installed";
+      sf.meta.textContent = status.stockfishIsDownloaded
+        ? `${fmtBytes(status.stockfishBytes)} on disk`
+        : `Found on this system (${status.stockfishPath})`;
+    } else if (status.flatpak) {
+      sf.name.textContent = "Not installed";
+      sf.meta.textContent = "Not visible inside this Flatpak sandbox — Install downloads a copy the app can use.";
+    } else {
+      sf.name.textContent = "Not installed";
+      sf.meta.textContent = "Not found on PATH or in the usual install locations.";
+    }
+    if (status.stockfishReady && status.stockfishIsDownloaded) {
+      sf.btn.className = "danger";
+      sf.btn.textContent = "Remove";
+      sf.btn.onclick = removeStockfish;
+    } else if (status.stockfishReady) {
+      // A system Stockfish is in use; nothing of ours to remove.
+      sf.btn.className = "secondary";
+      sf.btn.textContent = "In use";
+      sf.btn.onclick = null;
+    } else {
+      sf.btn.className = "";
+      sf.btn.textContent = "Install";
+      sf.btn.onclick = installStockfish;
+    }
+    sf.btn.disabled = busy || (status.stockfishReady && !status.stockfishIsDownloaded);
+  }
+
+  function renderDiskUsage(status) {
+    const total = Object.values(status.onnxModelBytes).reduce((a, b) => a + b, 0)
+      + (status.stockfishIsDownloaded ? status.stockfishBytes || 0 : 0);
+    diskUsageEl.textContent = total ? `${fmtBytes(total)} used on disk` : "";
+  }
+
+  async function refreshStatus() {
+    try {
+      const status = await invoke("setup_status");
+      renderModels(status);
+      renderStockfish(status);
+      renderDiskUsage(status);
+    } catch (err) {
+      log("!! Could not read setup status: " + err);
+    }
+  }
+
+  function setBusy(v) {
+    busy = v;
+    launchBtn.disabled = v;
+    refreshStatus();
+  }
+
+  async function installModel(model) {
+    setBusy(true);
+    log(`==> Installing Maia-3 (${model.id})...`);
+    try {
+      await invoke("run_onnx_setup", { model: model.id });
+      log(`Maia-3 (${model.id}): ready.`);
+    } catch (err) {
+      log(`!! Maia-3 (${model.id}) setup failed: ${err}`);
+    }
+    setBusy(false);
+  }
+
+  async function removeModel(model) {
+    if (!window.confirm(`Remove the ${model.name} model? You can reinstall it any time.`)) return;
+    setBusy(true);
+    log(`==> Removing Maia-3 (${model.id})...`);
+    try {
+      await invoke("remove_onnx_model", { model: model.id });
+      log(`Maia-3 (${model.id}): removed.`);
+    } catch (err) {
+      log(`!! Could not remove ${model.id}: ${err}`);
+    }
+    setBusy(false);
+  }
+
+  async function installStockfish() {
+    setBusy(true);
+    log("==> Installing Stockfish...");
+    try {
+      await invoke("install_stockfish");
+      log("Stockfish: ready.");
+    } catch (err) {
+      log("!! Stockfish setup failed: " + err);
+    }
+    setBusy(false);
+  }
+
+  async function removeStockfish() {
+    if (!window.confirm("Remove the downloaded Stockfish? You can reinstall it any time.")) return;
+    setBusy(true);
+    log("==> Removing Stockfish...");
+    try {
+      await invoke("remove_stockfish");
+      log("Stockfish: removed.");
+    } catch (err) {
+      log("!! Could not remove Stockfish: " + err);
+    }
+    setBusy(false);
+  }
 
   // Steps that can't report a number show striped "working" bars plus a running clock, not a fake percentage.
   const tasksEl = document.getElementById("tasks");
@@ -293,68 +436,7 @@
     }
   }
   setInterval(updateClocks, 1000);
-
   listen("setup-progress", (e) => renderProgress(e.payload));
-
-  async function refreshStatus() {
-    try {
-      const s = await invoke("setup_status");
-      const bits = [];
-      const model = onnxModelSelect.value;
-      const engineReady = s.onnxRuntimeReady && s.onnxModelsReady.includes(model);
-      bits.push(engineReady
-        ? `<span class="ok">Maia-3 (${model}, ONNX Runtime): ready</span>`
-        : `<span class="missing">Maia-3 (${model}, ONNX Runtime): not set up yet</span>`);
-
-      if (!installStockfish) {
-        bits.push('<span class="skipped">Stockfish: skipped</span>');
-      } else {
-        bits.push(s.stockfishReady
-          ? '<span class="ok">Stockfish: ready</span>'
-          : s.flatpak
-            ? '<span class="missing">Stockfish: not available inside the Flatpak sandbox — Run setup downloads a copy</span>'
-            : '<span class="missing">Stockfish: not found</span>');
-      }
-      statusEl.innerHTML = bits.join(" &nbsp;·&nbsp; ");
-      setupBtn.textContent = "Run setup";
-    } catch (err) {
-      statusEl.textContent = "Error: " + err;
-    }
-  }
-  onnxModelSelect.addEventListener("change", () => {
-    localStorage.setItem("maia3.onnxModel", onnxModelSelect.value);
-    refreshStatus();
-  });
-
-  setupBtn.addEventListener("click", async () => {
-    setupBtn.disabled = true;
-    launchBtn.disabled = true;
-    tasksEl.innerHTML = "";
-    for (const k of Object.keys(taskUI)) delete taskUI[k];
-    statusEl.textContent = "Setup running — the window stays usable; progress is shown below.";
-    log("==> Starting setup (this can take a few minutes on first run)...");
-
-    try {
-      await invoke("run_onnx_setup", { model: onnxModelSelect.value });
-    } catch (err) {
-      log("!! Maia-3 setup failed: " + err);
-    }
-
-    if (installStockfish) {
-      try {
-        await invoke("install_stockfish");
-      } catch (err) {
-        log("!! Stockfish setup failed: " + err);
-      }
-    } else {
-      log("==> Skipping Stockfish (not selected).");
-    }
-
-    log("==> Setup finished.");
-    setupBtn.disabled = false;
-    launchBtn.disabled = false;
-    await refreshStatus();
-  });
 
   launchBtn.addEventListener("click", () => {
     // Same bundled frontend, so there's no server to start; just navigate.

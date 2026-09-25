@@ -14,9 +14,14 @@ pub struct SetupStatus {
     pub engine_ready: bool,
     pub onnx_runtime_ready: bool,
     pub onnx_models_ready: Vec<String>,
+    /// Exported .onnx file size in bytes, keyed by model, for the models in `onnx_models_ready`.
+    pub onnx_model_bytes: std::collections::HashMap<String, u64>,
     pub stockfish_ready: bool,
     /// "stockfish" if found on PATH, otherwise the full path to the app's downloaded copy.
     pub stockfish_path: Option<String>,
+    /// True only when `stockfish_path` is this app's own downloaded copy, not a system install — the only case "Remove" applies to.
+    pub stockfish_is_downloaded: bool,
+    pub stockfish_bytes: Option<u64>,
     /// Host programs like a system Stockfish aren't visible in Flatpak; the UI uses this to push the built-in download.
     pub flatpak: bool,
 }
@@ -189,6 +194,15 @@ fn stockfish_install_dir(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// Removes only this app's own downloaded copy. A system Stockfish on PATH is left alone — there's nothing here to remove.
+#[tauri::command]
+pub fn remove_stockfish(app: AppHandle) -> Result<(), String> {
+    if let Some(path) = downloaded_stockfish_path(&app) {
+        std::fs::remove_file(&path).map_err(|e| format!("could not remove {}: {e}", path.display()))?;
+    }
+    Ok(())
+}
+
 fn downloaded_stockfish_path(app: &AppHandle) -> Option<PathBuf> {
     let path = stockfish_install_dir(app).ok()?.join(stockfish_exe_name());
     path.is_file().then_some(path)
@@ -233,12 +247,29 @@ pub fn stockfish_not_found_message() -> String {
 #[tauri::command(async)]
 pub fn setup_status(app: AppHandle) -> SetupStatus {
     let stockfish_path = resolve_stockfish(&app);
+    let downloaded_stockfish = downloaded_stockfish_path(&app);
+    let stockfish_is_downloaded = matches!((&stockfish_path, &downloaded_stockfish),
+        (Some(p), Some(d)) if *p == d.to_string_lossy());
+    let stockfish_bytes = downloaded_stockfish.filter(|_| stockfish_is_downloaded)
+        .and_then(|p| p.metadata().ok())
+        .map(|m| m.len());
+    let onnx_models_ready = onnx_exported_models(&app);
+    let onnx_model_bytes = onnx_models_ready
+        .iter()
+        .filter_map(|m| {
+            let bytes = onnx_model_path(&app, m).ok()?.metadata().ok()?.len();
+            Some((m.clone(), bytes))
+        })
+        .collect();
     SetupStatus {
         engine_ready: any_on_path(MAIA_CANDIDATES),
         onnx_runtime_ready: onnx_venv_python(&app).is_file(),
-        onnx_models_ready: onnx_exported_models(&app),
+        onnx_models_ready,
+        onnx_model_bytes,
         stockfish_ready: stockfish_path.is_some(),
         stockfish_path,
+        stockfish_is_downloaded,
+        stockfish_bytes,
         flatpak: is_flatpak(),
     }
 }
@@ -768,6 +799,16 @@ pub fn onnx_venv_python(app: &AppHandle) -> PathBuf {
 
 fn onnx_model_path(app: &AppHandle, model: &str) -> Result<PathBuf, String> {
     Ok(onnx_models_dir(app)?.join(format!("{model}.onnx")))
+}
+
+/// Deletes an exported model's .onnx file, freeing its disk space. A no-op (not an error) if it was never exported.
+#[tauri::command]
+pub fn remove_onnx_model(app: AppHandle, model: String) -> Result<(), String> {
+    let path = onnx_model_path(&app, &model)?;
+    if path.is_file() {
+        std::fs::remove_file(&path).map_err(|e| format!("could not remove {}: {e}", path.display()))?;
+    }
+    Ok(())
 }
 
 fn onnx_exported_models(app: &AppHandle) -> Vec<String> {

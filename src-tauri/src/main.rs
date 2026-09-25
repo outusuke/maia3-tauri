@@ -11,7 +11,7 @@ use analysis::{AnalysisConfig, MoveAnalysis};
 use chess::{Board, Piece, Square};
 use engine::Engine;
 use game::{Game, GameState};
-use setup::{install_stockfish, run_setup, setup_status};
+use setup::{install_stockfish, remove_onnx_model, remove_stockfish, run_setup, setup_status};
 use std::str::FromStr;
 use std::sync::Mutex;
 use std::time::Duration;
@@ -324,6 +324,8 @@ fn main() {
             run_setup,
             run_onnx_setup,
             install_stockfish,
+            remove_onnx_model,
+            remove_stockfish,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Maia Chess");
