@@ -2,7 +2,7 @@
 
 Desktop chess app (Tauri + Rust) for playing against [Maia-3](https://github.com/CSSLab/maia3) (CSSLab), a model trained to predict human moves at a chosen Elo.
 
-![screenshot](.github/screenshot.png)
+![screenshot](.github/Screenshot.png)
 
 ## features
 
