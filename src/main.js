@@ -1409,7 +1409,8 @@ document.addEventListener("keydown", (e) => {
   const navTargets = { ArrowLeft: "prev", ArrowRight: "next", Home: "start", End: "end" };
   if (e.key in navTargets) {
     e.preventDefault();
-    azGo(navTargets[e.key]);
+    if (puzzleMode) goPuzzleLine(navTargets[e.key]);
+    else azGo(navTargets[e.key]);
     return;
   }
   if (e.key === "Escape") {
@@ -2156,6 +2157,19 @@ function fillPuzzleFeedback(prefix, puzzle) {
     line.appendChild(document.createTextNode(" " + puzzle.bestLineSan.join(" ")));
   }
   box.appendChild(line);
+}
+
+// same as azGo(), but for the solution line shown once a puzzle is solved/revealed
+function goPuzzleLine(where) {
+  const puzzle = puzzles[puzzleIndex];
+  if (!puzzleLocked || !hasClickableLine(puzzle)) return;
+  const last = puzzle.bestLineUci.length;
+  if (where === "start") puzzleViewIdx = 0;
+  else if (where === "end") puzzleViewIdx = last;
+  else puzzleViewIdx = Math.max(0, Math.min(last, puzzleViewIdx + (where === "prev" ? -1 : 1)));
+  const moves = az.puzzleFeedback.querySelector(".puzzleLine .lineMoves");
+  if (moves) setActiveChip(moves, puzzleViewIdx);
+  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
 }
 
 function showPuzzleNext() {
