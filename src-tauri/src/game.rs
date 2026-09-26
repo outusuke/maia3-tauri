@@ -47,7 +47,8 @@ impl Game {
     }
 
     pub fn from_fen(fen: &str) -> Result<Self, String> {
-        let board = Board::from_str(fen).map_err(|e| format!("invalid FEN: {e}"))?;
+        let fen = sanitize_castle_rights(fen);
+        let board = Board::from_str(&fen).map_err(|e| format!("invalid FEN: {e}"))?;
         let mut repetitions = HashMap::new();
         repetitions.insert(repetition_key(&board), 1);
         Ok(Game {
@@ -280,7 +281,8 @@ fn rank_char(sq: Square) -> char {
 
 /// The FEN-based helpers below serve the puzzle board and setup preview, which never touch the live `Game`.
 pub fn scratch_legal_targets(fen: &str, from: Square) -> Result<Vec<String>, String> {
-    let board = Board::from_str(fen).map_err(|e| format!("invalid FEN: {e}"))?;
+    let fen = sanitize_castle_rights(fen);
+    let board = Board::from_str(&fen).map_err(|e| format!("invalid FEN: {e}"))?;
     Ok(MoveGen::new_legal(&board)
         .filter(|m| m.get_source() == from)
         .map(|m| m.get_dest().to_string())
@@ -293,7 +295,8 @@ pub fn scratch_try_move(
     to: Square,
     promotion: Option<Piece>,
 ) -> Result<(String, String, String), String> {
-    let board = Board::from_str(fen).map_err(|e| format!("invalid FEN: {e}"))?;
+    let fen = sanitize_castle_rights(fen);
+    let board = Board::from_str(&fen).map_err(|e| format!("invalid FEN: {e}"))?;
     let mv = ChessMove::new(from, to, promotion);
     if !board.legal(mv) {
         return Err("illegal move".into());
@@ -304,7 +307,56 @@ pub fn scratch_try_move(
 }
 
 pub fn validate_fen(fen: &str) -> Result<(), String> {
-    Board::from_str(fen).map(|_| ()).map_err(|e| format!("invalid FEN: {e}"))
+    let fen = sanitize_castle_rights(fen);
+    Board::from_str(&fen).map(|_| ()).map_err(|e| format!("invalid FEN: {e}"))
+}
+
+/// Drops any castling letter whose king isn't on its home square (e1/e8).
+/// The `chess` crate rejects the whole board over this instead of just
+/// ignoring the stale flag, which is easy to end up with from a board editor
+/// or a hand-edited FEN after the king has moved.
+fn sanitize_castle_rights(fen: &str) -> String {
+    let mut fields: Vec<&str> = fen.split_whitespace().collect();
+    if fields.len() < 3 || fields[2] == "-" {
+        return fen.to_string();
+    }
+
+    let ranks: Vec<&str> = fields[0].split('/').collect();
+    if ranks.len() != 8 {
+        return fen.to_string(); // malformed placement; let Board::from_str raise the real error
+    }
+
+    // FEN ranks run 8 -> 1, so rank 8 (Black's back rank) is ranks[0], rank 1 (White's) is ranks[7].
+    let king_on_e_file = |rank: &str, king_char: char| -> bool {
+        let mut file = 0u8;
+        for c in rank.chars() {
+            match c.to_digit(10) {
+                Some(skip) => file += skip as u8,
+                None => {
+                    if file == 4 && c == king_char {
+                        return true;
+                    }
+                    file += 1;
+                }
+            }
+        }
+        false
+    };
+
+    let white_king_home = king_on_e_file(ranks[7], 'K');
+    let black_king_home = king_on_e_file(ranks[0], 'k');
+
+    let cleaned: String = fields[2]
+        .chars()
+        .filter(|c| match c {
+            'K' | 'Q' => white_king_home,
+            'k' | 'q' => black_king_home,
+            _ => true,
+        })
+        .collect();
+
+    fields[2] = if cleaned.is_empty() { "-" } else { &cleaned };
+    fields.join(" ")
 }
 
 /// FEN without the move clocks: the fields that define a repeated position.
