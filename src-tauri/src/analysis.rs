@@ -77,9 +77,7 @@ fn effective_cp(cp: Option<i32>, mate: Option<i32>) -> i32 {
     }
 }
 
-/// Lichess's cp-to-winning-chances curve. Raw cp diffs treat +900→+600 the same as +100→-200,
-/// which is why a shuffling move deep in an already-won endgame was getting graded a "blunder" —
-/// this saturates near the edges so it doesn't.
+// lichess's cp->winning-chances curve; saturates near the edges so a shuffle in a won endgame isn't a "blunder"
 fn winning_chances(effective_cp: i32) -> f64 {
     2.0 / (1.0 + (-0.004 * effective_cp as f64).exp()) - 1.0
 }
