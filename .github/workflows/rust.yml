@@ -5,6 +5,8 @@ on:
     tags:
       - 'v*'
       - '*.*.*'
+  release:
+    types: [published]
 jobs:
   build:
     name: "Build Flatpak"
@@ -42,4 +44,4 @@ jobs:
           files: maia.flatpak
           generate_release_notes: true
           body: |
-            Flatpak bundle 
+            Flatpak bundle
