@@ -588,7 +588,8 @@ body.is-dragging, body.is-dragging * {
 .panel.collapsible > h2::after { content: "▾"; }
 .panel.collapsible.collapsed > h2 { margin-bottom: 0; }
 .panel.collapsible.collapsed > h2::after { content: "▸"; }
-.panel.collapsible.collapsed > :not(h2) { display: none; }
+.panel.collapsible.collapsed > :not(h2):not(#elo-field) { display: none; }
+.panel.collapsible.collapsed > #elo-field { margin-top: 10px; } /* Elo is live now, so keep it out even when collapsed */
 
 #flaggedList { max-height: 38vh; overflow-y: auto; }
 #analyzeSidebar.practicing #flaggedPanel,

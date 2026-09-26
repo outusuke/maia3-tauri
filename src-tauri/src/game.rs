@@ -25,6 +25,8 @@ struct Snapshot {
 
 pub struct Game {
     board: Board,
+    start_fen: String,
+    uci_moves: Vec<String>,
     san_history: Vec<String>,
     last_move: Option<(Square, Square)>,
     /// Keyed on the FEN minus the move clocks, so repeated positions match.
@@ -38,7 +40,9 @@ impl Game {
         let mut repetitions = HashMap::new();
         repetitions.insert(repetition_key(&board), 1);
         Game {
+            start_fen: format!("{board}"),
             board,
+            uci_moves: Vec::new(),
             san_history: Vec::new(),
             last_move: None,
             repetitions,
@@ -52,7 +56,9 @@ impl Game {
         let mut repetitions = HashMap::new();
         repetitions.insert(repetition_key(&board), 1);
         Ok(Game {
+            start_fen: format!("{board}"),
             board,
+            uci_moves: Vec::new(),
             san_history: Vec::new(),
             last_move: None,
             repetitions,
@@ -83,6 +89,7 @@ impl Game {
         });
         let san = move_to_san(&self.board, candidate);
         self.board = self.board.make_move_new(candidate);
+        self.uci_moves.push(candidate.to_string());
         self.san_history.push(san);
         self.last_move = Some((from, to));
         *self.repetitions.entry(repetition_key(&self.board)).or_insert(0) += 1;
@@ -94,12 +101,18 @@ impl Game {
         self.board = snap.board;
         self.last_move = snap.last_move;
         self.repetitions = snap.repetitions;
+        self.uci_moves.pop();
         self.san_history.pop();
         Ok(())
     }
 
     pub fn can_undo(&self) -> bool {
         !self.history.is_empty()
+    }
+
+    /// What a UCI `position` command needs to replay this game from scratch.
+    pub fn uci_history(&self) -> (&str, &[String]) {
+        (&self.start_fen, &self.uci_moves)
     }
 
     pub fn try_move_uci(&mut self, uci: &str) -> Result<(), String> {

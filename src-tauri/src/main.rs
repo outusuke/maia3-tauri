@@ -117,15 +117,16 @@ fn set_engine_elo(state: State<AppState>, elo: u32) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn engine_move(state: State<AppState>) -> Result<GameState, String> {
-    let fen = {
+    let (start_fen, moves) = {
         let game = state.game.lock().map_err(|e| e.to_string())?;
-        game.fen()
+        let (start_fen, moves) = game.uci_history();
+        (start_fen.to_string(), moves.to_vec())
     };
 
     let uci_move = {
         let mut slot = state.engine.lock().map_err(|e| e.to_string())?;
         let eng = slot.as_mut().ok_or("engine not running")?;
-        eng.best_move(&fen, Duration::from_secs(30))?
+        eng.best_move(&start_fen, &moves, Duration::from_secs(30))?
     };
 
     let mut game = state.game.lock().map_err(|e| e.to_string())?;
