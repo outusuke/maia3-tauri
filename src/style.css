@@ -492,6 +492,19 @@ button.small:disabled { opacity: 0.5; cursor: default; }
 .sideTag.white { background: #e9e9e9; color: #222; }
 .sideTag.black { background: #3a3a3a; color: #e9e9e9; }
 
+/* ---- Material bar (captured pieces + point lead), Lichess-style ---- */
+.materialBar {
+  display: flex; align-items: center; min-height: 22px;
+  width: min(52vh, 100%);
+  margin: 0 auto;
+  font-size: 13px; color: var(--muted); font-weight: 600;
+}
+.materialBar:empty::before { content: "\00a0"; } /* keeps the row's height so the board doesn't jump */
+.materialGroup { display: flex; align-items: center; margin-right: 6px; }
+.materialGroup img { width: 16px; height: 16px; margin-right: -7px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5)); }
+.materialGroup img:last-child { margin-right: 0; }
+.materialLead { margin-left: 3px; }
+
 #puzzlePanelV2 { display: none; }
 #puzzlePanelV2.show { display: block; }
 #puzzleProgressV2 { font-size: 12px; color: var(--muted); margin-bottom: 6px; }

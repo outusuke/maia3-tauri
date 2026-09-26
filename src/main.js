@@ -327,16 +327,52 @@ function sideToMove(fen) {
   return parts[1] === "b" ? "black" : "white";
 }
 
-function materialText(fen) {
+// Lichess order: pawns, then minor/major pieces by value.
+const CAPTURE_ORDER = ["p", "n", "b", "r", "q"];
+const START_COUNTS = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+
+function materialInfo(fen) {
   const board = fenToBoard(fen);
-  let white = 0, black = 0;
-  for (const p of Object.values(board)) {
-    const v = PIECE_VALUES[p.toLowerCase()] || 0;
-    if (p === p.toUpperCase()) white += v; else black += v;
+  const remaining = { p: 0, n: 0, b: 0, r: 0, q: 0, P: 0, N: 0, B: 0, R: 0, Q: 0 };
+  for (const p of Object.values(board)) if (p in remaining) remaining[p]++;
+  let diff = 0;
+  const capturedByWhite = []; // black pieces White has taken, drawn as black icons
+  const capturedByBlack = []; // white pieces Black has taken, drawn as white icons
+  for (const t of CAPTURE_ORDER) {
+    const blackLost = START_COUNTS[t] - remaining[t];
+    const whiteLost = START_COUNTS[t] - remaining[t.toUpperCase()];
+    for (let i = 0; i < blackLost; i++) capturedByWhite.push(t);
+    for (let i = 0; i < whiteLost; i++) capturedByBlack.push(t.toUpperCase());
+    diff += (blackLost - whiteLost) * PIECE_VALUES[t];
   }
-  const diff = white - black;
-  if (diff === 0) return "Material: even";
-  return diff > 0 ? `Material: White +${diff}` : `Material: Black +${-diff}`;
+  return { capturedByWhite, capturedByBlack, diff };
+}
+
+function renderMaterialSide(el, pieces, lead) {
+  el.textContent = "";
+  if (pieces.length === 0 && !lead) return;
+  const group = document.createElement("span");
+  group.className = "materialGroup";
+  for (const p of pieces) {
+    const img = document.createElement("img");
+    img.src = pieceImageSrc(p);
+    img.alt = p;
+    group.appendChild(img);
+  }
+  el.appendChild(group);
+  if (lead) {
+    const span = document.createElement("span");
+    span.className = "materialLead";
+    span.textContent = `+${lead}`;
+    el.appendChild(span);
+  }
+}
+
+// Which bar shows which color's captures follows the board's orientation, same as Lichess.
+function renderMaterialBars(topEl, bottomEl, fen, flipped) {
+  const { capturedByWhite, capturedByBlack, diff } = materialInfo(fen);
+  renderMaterialSide(flipped ? topEl : bottomEl, capturedByWhite, diff > 0 ? diff : 0);
+  renderMaterialSide(flipped ? bottomEl : topEl, capturedByBlack, diff < 0 ? -diff : 0);
 }
 
 function onSquarePointerDown(e, boardEl, sq, piece, opts) {
@@ -486,7 +522,8 @@ const els = {
   resignBtn: document.getElementById("resign-btn"),
   analyzeThisBtn: document.getElementById("analyze-this-btn"),
   sideSelect: document.getElementById("side-select"),
-  modelSelect: document.getElementById("model-select"),
+  activeModelName: document.getElementById("active-model-name"),
+  noModelHint: document.getElementById("no-model-hint"),
   eloSlider: document.getElementById("elo-slider"),
   eloValue: document.getElementById("elo-value"),
   temperatureSlider: document.getElementById("temperature-slider"),
@@ -506,6 +543,8 @@ const els = {
   navPrev: document.getElementById("nav-prev"),
   navNext: document.getElementById("nav-next"),
   navEnd: document.getElementById("nav-end"),
+  materialTop: document.getElementById("materialTop"),
+  materialBottom: document.getElementById("materialBottom"),
   setupPanel: document.getElementById("setup-panel"),
   setupSummary: document.getElementById("setup-summary"),
   advanced: document.getElementById("advanced-settings"),
@@ -560,10 +599,24 @@ document.addEventListener("keydown", (e) => {
   if (!document.getElementById("playTab").classList.contains("active")) return;
   if (document.getElementById("setup-overlay").classList.contains("show")) return;
   if (e.target.closest && e.target.closest("input, textarea, select, summary")) return;
-  const targets = { ArrowLeft: viewPly - 1, ArrowRight: viewPly + 1, Home: 0, End: posHistory.length - 1 };
-  if (!(e.key in targets)) return;
-  e.preventDefault();
-  viewMove(targets[e.key]);
+
+  const navTargets = { ArrowLeft: viewPly - 1, ArrowRight: viewPly + 1, Home: 0, End: posHistory.length - 1 };
+  if (e.key in navTargets) {
+    e.preventDefault();
+    viewMove(navTargets[e.key]);
+    return;
+  }
+  const key = e.key.toLowerCase();
+  if (key === "f") {
+    e.preventDefault();
+    els.flipBtn.click();
+  } else if (key === "u" && !els.undoBtn.disabled) {
+    e.preventDefault();
+    els.undoBtn.click();
+  } else if (key === "n" && !els.startBtn.disabled) {
+    e.preventDefault();
+    els.startBtn.click();
+  }
 });
 
 function selectedSide() {
@@ -596,30 +649,49 @@ function showFenError(msg) {
 // Always ONNX; only the first-launch screen in index.html still touches the "maia3.backend" key.
 const ENGINE_BACKEND = "onnx";
 
-// Runs setup on the fly if the chosen model size wasn't exported during onboarding.
-async function ensureOnnxModelReady(model) {
-  const s = await invoke("setup_status");
-  if (s.onnxRuntimeReady && s.onnxModelsReady.includes(model)) return;
-  setStatus(`Preparing Maia-3 (${model}) — first time only, this can take a few minutes…`);
-  // Surface each setup step so it doesn't look hung.
-  const stop = await listenSetupProgress("maia", (p) => {
-    const text = progressText(p);
-    setStatus(`Preparing Maia-3 (${model}) — ${text}`);
-    els.startBtn.textContent = `Setting up… ${Math.floor(p.overall)}%`;
-  });
-  try {
-    await invoke("run_onnx_setup", { model });
-  } finally {
-    stop();
-  }
+// Models are installed and chosen on the Setup screen now; this just formats the id for display.
+function modelLabel(model) {
+  return model.replace("maia3-", "").toUpperCase();
 }
 
-function progressText(p) {
-  if (p.state === "done") return "done";
-  const label = p.steps[p.index] || "";
-  const detail = p.detail ? ` (${p.detail})` : "";
-  return `step ${Math.min(p.index + 1, p.steps.length)} of ${p.steps.length}: ${label}${detail}`;
+// Wrapped since localStorage can throw (privacy mode, disabled storage); shouldn't take the tab down.
+const activeModelStore = {
+  get() { try { return localStorage.getItem("maia3.activeModel"); } catch { return null; } },
+  set(v) { try { localStorage.setItem("maia3.activeModel", v); } catch {} },
+};
+
+let activeModelReady = false;
+
+function syncStartButton() {
+  els.startBtn.disabled = !activeModelReady;
+  els.startBtn.textContent = startLabel();
 }
+
+async function refreshActiveModelUI() {
+  let ready = [];
+  try {
+    ready = (await invoke("setup_status")).onnxModelsReady || [];
+  } catch {
+    ready = [];
+  }
+  const stored = activeModelStore.get();
+  // Falls back to an installed model if the stored choice was removed since the app last loaded.
+  const active = (stored && ready.includes(stored)) ? stored : (ready[0] || null);
+  if (active) activeModelStore.set(active);
+
+  activeModelReady = !!active;
+  els.activeModelName.textContent = active ? modelLabel(active) : "None installed";
+  els.noModelHint.style.display = active ? "none" : "block";
+  syncStartButton();
+}
+
+function getActiveModel() {
+  const model = activeModelStore.get();
+  if (!model) throw new Error("No Maia-3 model installed — install one on the Setup screen.");
+  return model;
+}
+
+refreshActiveModelUI();
 
 async function listenSetupProgress(task, handler) {
   return await listen("setup-progress", (e) => {
@@ -655,12 +727,10 @@ async function startGame() {
     playerColor = chosen === "random" ? (Math.random() < 0.5 ? "white" : "black") : chosen;
     flipped = playerColor === "black";
 
-    const model = els.modelSelect.value;
+    const model = getActiveModel();
     const elo = parseInt(els.eloSlider.value, 10);
     const temperature = els.temperatureSlider.value;
     const topP = els.topPSlider.value;
-
-    await ensureOnnxModelReady(model);
 
     state = await invoke("new_game", { fen: fenInput || null });
     startFen = state.fen === STANDARD_FEN ? STANDARD_FEN : (fenInput || state.fen);
@@ -696,8 +766,7 @@ async function startGame() {
   } catch (err) {
     setStatus(`Could not start engine: ${err}`);
   } finally {
-    els.startBtn.disabled = false;
-    els.startBtn.textContent = startLabel();
+    syncStartButton();
   }
 }
 
@@ -818,6 +887,7 @@ function renderPlayBoard() {
   const board = fenToBoard(fen);
   const checkSquare = (viewingLive && state.inCheck) ? findKingInCheckSquare(board, sideToMove(fen)) : null;
 
+  renderMaterialBars(els.materialTop, els.materialBottom, fen, flipped);
   renderChessBoard(els.board, fen, {
     flipped,
     selected: viewingLive ? selected : null,
@@ -1208,6 +1278,8 @@ const az = {
   variationTitle: document.getElementById("variationTitle"),
   variationLine: document.getElementById("variationLine"),
   variationExitBtn: document.getElementById("variationExitBtn"),
+  materialTop: document.getElementById("aMaterialTop"),
+  materialBottom: document.getElementById("aMaterialBottom"),
 };
 
 let loadedGame = null;      // {startFen, sans, fens}
@@ -1256,6 +1328,7 @@ function analyzeView() {
 
 function renderAnalyzeBoard() {
   const view = analyzeView();
+  renderMaterialBars(az.materialTop, az.materialBottom, view.fen, azFlipped);
   renderChessBoard(az.board, view.fen, {
     interactive: false,
     flipped: azFlipped,
@@ -1311,6 +1384,34 @@ function azGoToPly(ply) {
 
 az.arrowToggle.addEventListener("change", () => { if (!puzzleMode) renderAnalyzeBoard(); });
 az.variationExitBtn.addEventListener("click", () => { variation = null; renderAnalyzeBoard(); });
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  if (!document.getElementById("analyzeTab").classList.contains("active")) return;
+  if (e.target.closest && e.target.closest("input, textarea, select, summary")) return;
+
+  const navTargets = { ArrowLeft: "prev", ArrowRight: "next", Home: "start", End: "end" };
+  if (e.key in navTargets) {
+    e.preventDefault();
+    azGo(navTargets[e.key]);
+    return;
+  }
+  if (e.key === "Escape") {
+    if (variation) {
+      e.preventDefault();
+      variation = null;
+      renderAnalyzeBoard();
+    } else if (puzzleMode) {
+      e.preventDefault();
+      exitPuzzleMode();
+    }
+    return;
+  }
+  if (e.key.toLowerCase() === "f" && !puzzleMode) {
+    e.preventDefault();
+    az.flipBtn.click();
+  }
+});
 
 // onPick(n): n = moves played from the start of the line
 function renderLineChips(container, entry, onPick) {
@@ -1931,6 +2032,7 @@ function renderPuzzleBoard(flip) {
     if (idx > 0) lastMove = sq;
     if (sq) arrows = [{ from: sq[0], to: sq[1], brush: "blue" }];
   }
+  renderMaterialBars(az.materialTop, az.materialBottom, fen, flip);
   renderChessBoard(az.board, fen, {
     flipped: flip,
     lastMove,

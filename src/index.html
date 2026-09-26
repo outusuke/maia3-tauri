@@ -31,6 +31,11 @@
   .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
   .badge.ready { background: #163a2a; color: #59d18a; }
   .modelCard .meta { font-size: 0.76rem; color: #6c7280; margin: 10px 0 12px; }
+  .modelCard .useForPlay {
+    display: none; align-items: center; gap: 6px; font-size: 0.78rem; color: #9aa0ab;
+    margin: 0 0 10px; cursor: pointer;
+  }
+  .modelCard .useForPlay input { accent-color: #3b6ef2; margin: 0; }
   .modelCard button { margin-top: auto; }
 
   .stockfishCard { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -199,6 +204,10 @@
         <span class="badge ready" style="display:none;">Installed</span>
       </div>
       <p class="meta"></p>
+      <label class="useForPlay" style="display:none;">
+        <input type="radio" name="activeModel" value="${model.id}">
+        Use for play
+      </label>
       <button></button>`;
     modelGrid.appendChild(card);
     modelCards[model.id] = {
@@ -206,10 +215,35 @@
       badge: card.querySelector(".badge"),
       meta: card.querySelector(".meta"),
       btn: card.querySelector("button"),
+      useLabel: card.querySelector(".useForPlay"),
+      useRadio: card.querySelector("input"),
     };
+    modelCards[model.id].useRadio.addEventListener("change", () => setActiveModel(model.id));
+  }
+
+  // Wrapped since localStorage can throw (privacy mode, disabled storage); shouldn't take the screen down.
+  const activeModelStore = {
+    get() { try { return localStorage.getItem("maia3.activeModel"); } catch { return null; } },
+    set(v) { try { localStorage.setItem("maia3.activeModel", v); } catch {} },
+    clear() { try { localStorage.removeItem("maia3.activeModel"); } catch {} },
+  };
+
+  // Falls back to an installed model so this screen and the Play tab can't disagree about what's active.
+  function resolveActiveModel(readyIds) {
+    const stored = activeModelStore.get();
+    const active = (stored && readyIds.includes(stored)) ? stored : (readyIds[0] || null);
+    if (active) activeModelStore.set(active);
+    else activeModelStore.clear();
+    return active;
+  }
+
+  function setActiveModel(id) {
+    activeModelStore.set(id);
+    refreshStatus();
   }
 
   function renderModels(status) {
+    const active = resolveActiveModel(status.onnxModelsReady);
     for (const model of MODELS) {
       const ui = modelCards[model.id];
       const ready = status.onnxModelsReady.includes(model.id);
@@ -222,6 +256,9 @@
       ui.btn.innerHTML = ready ? "Remove" : "Install";
       ui.btn.disabled = busy;
       ui.btn.onclick = () => (ready ? removeModel(model) : installModel(model));
+      ui.useLabel.style.display = ready ? "flex" : "none";
+      ui.useRadio.checked = ready && model.id === active;
+      ui.useRadio.disabled = busy;
     }
   }
 
@@ -271,6 +308,21 @@
     } catch (err) {
       log("!! Could not read setup status: " + err);
     }
+  }
+
+  // Skip straight to the app once a model is ready; the gear icon's ?manual=1 opts back into this screen.
+  async function redirectIfAlreadySetUp() {
+    if (new URLSearchParams(location.search).has("manual")) return false;
+    try {
+      const status = await invoke("setup_status");
+      if (status.onnxModelsReady && status.onnxModelsReady.length > 0) {
+        window.location.replace("app.html");
+        return true;
+      }
+    } catch (err) {
+      // Fall through to showing the setup screen normally.
+    }
+    return false;
   }
 
   function setBusy(v) {
@@ -443,7 +495,7 @@
     window.location.replace("app.html");
   });
 
-  refreshStatus();
+  redirectIfAlreadySetUp().then((redirected) => { if (!redirected) refreshStatus(); });
 </script>
 </body>
 </html>

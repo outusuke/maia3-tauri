@@ -1020,7 +1020,7 @@ fn run_onnx_setup_impl(app: &AppHandle, model: &str, progress: &mut Progress) ->
 
         // The throwaway venv (and its torch install) is only needed for the export.
         let _ = std::fs::remove_dir_all(&export_venv);
-        prune_hf_checkpoint(app, model);
+        prune_hf_cache(app);
     }
 
     if runtime_python.is_file() {
@@ -1116,21 +1116,25 @@ fn hf_hub_dirs() -> Vec<PathBuf> {
     dirs
 }
 
-/// Best effort: the checkpoint is only needed for the export and is hundreds of MB.
-fn prune_hf_checkpoint(app: &AppHandle, model: &str) {
-    let size_suffix = model.trim_start_matches("maia3-");
-    let suffix = format!("aia3-{size_suffix}");
+/// Clears the whole cache rather than one entry: nothing else here reads it, and the export's repo id is the `maia3` package's own choice, not ours to match against.
+fn prune_hf_cache(app: &AppHandle) {
+    let mut cleared = false;
     for hub_dir in hf_hub_dirs() {
         let Ok(entries) = std::fs::read_dir(&hub_dir) else {
             continue;
         };
         for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_lowercase();
-            if name.starts_with("models--") && name.ends_with(&suffix) {
-                emit_log(app, format!("    Removing downloaded checkpoint cache for {model} (already exported)"));
-                let _ = std::fs::remove_dir_all(entry.path());
-            }
+            let path = entry.path();
+            let removed = if path.is_dir() {
+                std::fs::remove_dir_all(&path).is_ok()
+            } else {
+                std::fs::remove_file(&path).is_ok()
+            };
+            cleared |= removed;
         }
+    }
+    if cleared {
+        emit_log(app, "    Cleared the downloaded checkpoint cache (already exported)".to_string());
     }
 }
 
