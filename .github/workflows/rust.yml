@@ -19,13 +19,13 @@ jobs:
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
-          bundle: maia.flatpak
+          bundle: maia3-tauri.flatpak
           manifest-path: dev.maiachess.MaiaChess.yml
       - name: Upload temporary artifact
         uses: actions/upload-artifact@v4
         with:
           name: flatpak-bundle
-          path: maia.flatpak
+          path: maia3-tauri.flatpak
   release:
     name: "Publish Release"
     needs: build
@@ -41,7 +41,18 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          files: maia.flatpak
+          files: maia3-tauri.flatpak
           generate_release_notes: true
           body: |
-            Flatpak bundle
+            Flatpak bundle for maia3-tauri
+
+            **First install:**
+            ```bash
+            flatpak install --user maia3-tauri.flatpak
+            flatpak run dev.maiachess.MaiaChess
+            ```
+
+            **Already installed? Update to this version:**
+            ```bash
+            flatpak install --user --reinstall maia3-tauri.flatpak
+            ```
