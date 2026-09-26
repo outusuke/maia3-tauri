@@ -119,9 +119,11 @@ pub fn parse_sans(sans_in: &[String], start_fen: Option<&str>) -> Result<ParsedG
 }
 
 /// chess's `from_san` only takes en passant captures written with an " e.p." suffix, which PGN doesn't use.
+// also strips "=" since this crate wants "a8Q", not "a8=Q", for promotions
 fn san_to_move(board: &Board, san: &str) -> Result<ChessMove, Error> {
-    ChessMove::from_san(board, san)
-        .or_else(|first| ChessMove::from_san(board, &format!("{san} e.p.")).map_err(|_| first))
+    let normalized = san.replace('=', "");
+    ChessMove::from_san(board, &normalized)
+        .or_else(|first| ChessMove::from_san(board, &format!("{normalized} e.p.")).map_err(|_| first))
 }
 
 fn parse_header(line: &str) -> Option<(String, String)> {
