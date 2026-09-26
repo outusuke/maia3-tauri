@@ -501,7 +501,11 @@ button.small:disabled { opacity: 0.5; cursor: default; }
 }
 .materialBar:empty::before { content: "\00a0"; } /* keeps the row's height so the board doesn't jump */
 .materialGroup { display: flex; align-items: center; margin-right: 6px; }
-.materialGroup img { width: 16px; height: 16px; margin-right: -7px; filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5)); }
+.materialGroup img {
+  width: 22px; height: 22px; margin-right: -5px;
+  /* stacked twice for a visible halo — drop-shadow has no spread option */
+  filter: drop-shadow(0 0 1px rgba(255,255,255,0.85)) drop-shadow(0 0 1px rgba(255,255,255,0.85));
+}
 .materialGroup img:last-child { margin-right: 0; }
 .materialLead { margin-left: 3px; }
 
