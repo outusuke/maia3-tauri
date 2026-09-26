@@ -44,9 +44,10 @@ pub struct MoveAnalysis {
 pub struct AnalysisConfig {
     pub depth: u32,
     pub multipv: u32,
-    pub inaccuracy_cp: i32,
-    pub mistake_cp: i32,
-    pub blunder_cp: i32,
+    // Winning-chances units (-1..1), same scale and constants Lichess grades moves on.
+    pub inaccuracy_wc: f64,
+    pub mistake_wc: f64,
+    pub blunder_wc: f64,
     pub acceptable_cp: i32,
     pub move_timeout: Duration,
 }
@@ -56,9 +57,9 @@ impl Default for AnalysisConfig {
         AnalysisConfig {
             depth: 14,
             multipv: 3,
-            inaccuracy_cp: 50,
-            mistake_cp: 100,
-            blunder_cp: 300,
+            inaccuracy_wc: 0.1,
+            mistake_wc: 0.2,
+            blunder_wc: 0.3,
             acceptable_cp: 20,
             move_timeout: Duration::from_secs(60),
         }
@@ -74,6 +75,13 @@ fn effective_cp(cp: Option<i32>, mate: Option<i32>) -> i32 {
         Some(m) => -MATE_CP_MAGNITUDE - m,
         None => cp.unwrap_or(0),
     }
+}
+
+/// Lichess's cp-to-winning-chances curve. Raw cp diffs treat +900→+600 the same as +100→-200,
+/// which is why a shuffling move deep in an already-won endgame was getting graded a "blunder" —
+/// this saturates near the edges so it doesn't.
+fn winning_chances(effective_cp: i32) -> f64 {
+    2.0 / (1.0 + (-0.004 * effective_cp as f64).exp()) - 1.0
 }
 
 fn flip_if_black(value: i32, side_to_move: Color) -> i32 {
@@ -121,12 +129,12 @@ pub fn analyze_game(
             -effective_cp(after_best.score_cp, after_best.mate)
         };
 
-        let loss = (best_effective - played_effective).max(0);
-        let grade = if loss < config.inaccuracy_cp {
+        let loss = (winning_chances(best_effective) - winning_chances(played_effective)).max(0.0);
+        let grade = if loss < config.inaccuracy_wc {
             MoveGrade::Good
-        } else if loss < config.mistake_cp {
+        } else if loss < config.mistake_wc {
             MoveGrade::Inaccuracy
-        } else if loss < config.blunder_cp {
+        } else if loss < config.blunder_wc {
             MoveGrade::Mistake
         } else {
             MoveGrade::Blunder
