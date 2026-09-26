@@ -311,10 +311,7 @@ pub fn validate_fen(fen: &str) -> Result<(), String> {
     Board::from_str(&fen).map(|_| ()).map_err(|e| format!("invalid FEN: {e}"))
 }
 
-/// Drops any castling letter whose king isn't on its home square (e1/e8).
-/// The `chess` crate rejects the whole board over this instead of just
-/// ignoring the stale flag, which is easy to end up with from a board editor
-/// or a hand-edited FEN after the king has moved.
+// Strip castling rights if the king moved; `chess` crate errors on stale flags instead of ignoring them
 fn sanitize_castle_rights(fen: &str) -> String {
     let mut fields: Vec<&str> = fen.split_whitespace().collect();
     if fields.len() < 3 || fields[2] == "-" {
