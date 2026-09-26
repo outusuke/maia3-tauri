@@ -526,6 +526,7 @@ const els = {
   noModelHint: document.getElementById("no-model-hint"),
   eloSlider: document.getElementById("elo-slider"),
   eloValue: document.getElementById("elo-value"),
+  eloLiveHint: document.getElementById("elo-live-hint"),
   temperatureSlider: document.getElementById("temperature-slider"),
   temperatureValue: document.getElementById("temperature-value"),
   topPSlider: document.getElementById("top-p-slider"),
@@ -574,6 +575,17 @@ let posHistory = [{ fen: STANDARD_FEN, lastMove: null }];
 let viewPly = 0; // index into posHistory currently shown; live = length-1
 
 els.eloSlider.addEventListener("input", () => { els.eloValue.textContent = els.eloSlider.value; });
+els.eloSlider.addEventListener("change", async () => {
+  if (!gameStarted || isGameOver()) return; // pre-game, this just sets the value startGame() will read
+  const elo = parseInt(els.eloSlider.value, 10);
+  try {
+    await invoke("set_engine_elo", { elo });
+    els.movesMeta.textContent = `You (${playerColor}) vs Maia-3 · ${elo} Elo`;
+    setStatus(`Maia-3 Elo set to ${elo} for the rest of this game.`);
+  } catch (err) {
+    setStatus(`Could not update Elo: ${err}`);
+  }
+});
 els.temperatureSlider.addEventListener("input", () => { els.temperatureValue.textContent = els.temperatureSlider.value; });
 els.topPSlider.addEventListener("input", () => { els.topPValue.textContent = els.topPSlider.value; });
 els.startBtn.addEventListener("click", startGame);
@@ -755,6 +767,7 @@ async function startGame() {
     els.setupSummary.textContent = `${playerColor === "white" ? "White" : "Black"} · ${elo} · ${model.replace("maia3-", "").toUpperCase()}`;
     els.movesMeta.textContent = `You (${playerColor}) vs Maia-3 · ${elo} Elo`;
     els.setupPanel.classList.add("collapsed");
+    els.eloLiveHint.style.display = "";
     renderPlayBoard();
     renderMoveList();
     const tempNote = Number(temperature) > 0 ? `, temp ${temperature}` : ", greedy";
@@ -862,7 +875,10 @@ let gameOverHandled = false;
 
 function updateControls() {
   if (isGameOver()) {
-    if (!gameOverHandled) els.setupPanel.classList.remove("collapsed");
+    if (!gameOverHandled) {
+      els.setupPanel.classList.remove("collapsed");
+      els.eloLiveHint.style.display = "none";
+    }
     gameOverHandled = true;
   } else {
     gameOverHandled = false;

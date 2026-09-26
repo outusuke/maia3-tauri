@@ -156,8 +156,9 @@ impl Engine {
     }
 
     /// `go nodes 1` on purpose: Maia is a single forward pass, so a deeper search wouldn't change its move.
-    pub fn best_move(&mut self, fen: &str, timeout: Duration) -> Result<String, String> {
-        self.send(&format!("position fen {}", uci_fen(fen)))?;
+    /// Takes the whole game, not just the current fen, so --use-uci-history has real moves to replay.
+    pub fn best_move(&mut self, start_fen: &str, moves: &[String], timeout: Duration) -> Result<String, String> {
+        self.send(&position_command(start_fen, moves))?;
         self.send("go nodes 1")?;
         let line = self
             .wait_for("bestmove", timeout)
@@ -232,4 +233,13 @@ fn uci_fen(fen: &str) -> String {
         fields[3] = format!("{}{}", &fields[3][..1], rank);
     }
     fields.join(" ")
+}
+
+fn position_command(start_fen: &str, moves: &[String]) -> String {
+    let fen = uci_fen(start_fen);
+    if moves.is_empty() {
+        format!("position fen {fen}")
+    } else {
+        format!("position fen {fen} moves {}", moves.join(" "))
+    }
 }

@@ -68,9 +68,12 @@
             </p>
           </div>
 
-          <label>Maia-3 Elo: <span id="elo-value">1500</span>
-            <input type="range" id="elo-slider" min="1100" max="2900" step="50" value="1500" />
-          </label>
+          <div class="field" id="elo-field">
+            <label>Maia-3 Elo: <span id="elo-value">1500</span>
+              <input type="range" id="elo-slider" min="1100" max="2900" step="50" value="1500" />
+            </label>
+            <p class="hint" id="elo-live-hint" style="display:none; margin-top:6px;">Changes apply immediately, mid-game.</p>
+          </div>
 
           <details id="advanced-settings">
             <summary id="advanced-summary">Advanced</summary>
