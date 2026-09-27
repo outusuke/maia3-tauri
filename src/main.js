@@ -5,6 +5,15 @@ const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const RANKS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const STANDARD_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+// okay.png is WintrChess's "solid, nothing to improve" icon — the closest fit for our single "good" bucket.
+// best/excellent/critical/forced/miss/error/risky/theory/loading ship in src/img/classifications/ for later use.
+const GRADE_BADGE_ICON = {
+  brilliant: "img/classifications/brilliant.png",
+  good: "img/classifications/okay.png",
+  inaccuracy: "img/classifications/inaccuracy.png",
+  mistake: "img/classifications/mistake.png",
+  blunder: "img/classifications/blunder.png",
+};
 
 function pieceImageSrc(piece) {
   const color = piece === piece.toUpperCase() ? "w" : "b";
@@ -447,6 +456,14 @@ function renderChessBoard(el, fen, opts) {
         img.alt = piece;
         img.draggable = false;
         div.appendChild(img);
+      }
+
+      if (opts.badge && opts.badge.square === sq && GRADE_BADGE_ICON[opts.badge.grade]) {
+        const badge = document.createElement("img");
+        badge.className = `moveBadge ${gradeClass(opts.badge.grade)}`;
+        badge.src = GRADE_BADGE_ICON[opts.badge.grade];
+        badge.alt = opts.badge.grade;
+        div.appendChild(badge);
       }
 
       if (file === files[0]) {
@@ -1336,10 +1353,17 @@ function analysisArrowsAt(ply) {
   const m = analysis[ply];
   if (!m) return arrows;
   const played = uciToSquares(m.uci);
-  if (played && m.grade !== "good") arrows.push({ from: played[0], to: played[1], brush: "red", opacity: 0.7 });
+  if (played && !isPositiveGrade(m.grade)) arrows.push({ from: played[0], to: played[1], brush: "red", opacity: 0.7 });
   const best = uciToSquares(m.bestMoveUci);
   if (best) arrows.push({ from: best[0], to: best[1], brush: "blue" });
   return arrows;
+}
+
+function azBadgeAt(ply) {
+  if (!analysis || ply === 0) return null;
+  const m = analysis[ply - 1];
+  const sq = m && m.uci ? m.uci.slice(2, 4) : null;
+  return sq ? { square: sq, grade: m.grade } : null;
 }
 
 function analyzeView() {
@@ -1350,9 +1374,15 @@ function analyzeView() {
       fen: variation.fens[variation.idx],
       lastMove: variation.idx > 0 ? sq : null,
       arrows: sq && az.arrowToggle.checked ? [{ from: sq[0], to: sq[1], brush: "blue" }] : [],
+      badge: null,
     };
   }
-  return { fen: azFenAt(azViewPly), lastMove: azLastMoveAt(azViewPly), arrows: analysisArrowsAt(azViewPly) };
+  return {
+    fen: azFenAt(azViewPly),
+    lastMove: azLastMoveAt(azViewPly),
+    arrows: analysisArrowsAt(azViewPly),
+    badge: azBadgeAt(azViewPly),
+  };
 }
 
 function renderAnalyzeBoard() {
@@ -1363,6 +1393,7 @@ function renderAnalyzeBoard() {
     flipped: azFlipped,
     lastMove: view.lastMove,
     arrows: view.arrows,
+    badge: view.badge,
   });
 
   let atStart, atEnd;
@@ -1621,6 +1652,8 @@ az.analyzeBtn.addEventListener("click", async () => {
 });
 
 function gradeClass(grade) { return "grade-" + grade; }
+// no "better move" hint for either — both are already the top choice
+function isPositiveGrade(grade) { return grade === "good" || grade === "brilliant"; }
 
 function renderAnalyzeMoveList() {
   az.moveList.innerHTML = "";
@@ -1740,10 +1773,10 @@ az.practiceSideSelect.addEventListener("change", updatePracticeControls);
 az.practiceBtn.addEventListener("click", enterPuzzleMode);
 
 // Eval graph: Y axis is win probability (Lichess curve); linear centipawns would flatten most games near zero.
-const EVAL_GRADE_COLORS = { inaccuracy: "#e3c96b", mistake: "#f0a860", blunder: "#e05555" };
-const EVAL_GRADE_RADIUS = { inaccuracy: 3.5, mistake: 4.5, blunder: 5.5 };
-const EVAL_GRADE_MARK = { good: "", inaccuracy: "?!", mistake: "?", blunder: "??" };
-const EVAL_GRADE_NAME = { good: "Good", inaccuracy: "Inaccuracy", mistake: "Mistake", blunder: "Blunder" };
+const EVAL_GRADE_COLORS = { brilliant: "#26c2c2", inaccuracy: "#e3c96b", mistake: "#f0a860", blunder: "#e05555" };
+const EVAL_GRADE_RADIUS = { brilliant: 5, inaccuracy: 3.5, mistake: 4.5, blunder: 5.5 };
+const EVAL_GRADE_MARK = { good: "", brilliant: "!!", inaccuracy: "?!", mistake: "?", blunder: "??" };
+const EVAL_GRADE_NAME = { good: "Good", brilliant: "Brilliant", inaccuracy: "Inaccuracy", mistake: "Mistake", blunder: "Blunder" };
 let evalHoverPly = null;
 let evalDragging = false;
 let evalGeom = null;       // { left, plotW, n } from the last draw, for hit-testing
@@ -1922,7 +1955,7 @@ function renderEvalInfo(ply) {
   const after = evalLabel(m.evalAfterCp, m.mateAfter);
   add(` · eval ${before === after ? after : `${before} → ${after}`}`, "evalMuted");
 
-  if (m.grade !== "good" && m.bestMoveSan) {
+  if (!isPositiveGrade(m.grade) && m.bestMoveSan) {
     add(" · better: ", "evalMuted");
     const b = document.createElement(hasClickableLine(m) ? "span" : "b");
     b.textContent = m.bestMoveSan;
@@ -1935,7 +1968,7 @@ function renderEvalInfo(ply) {
   }
 
   az.evalLine.textContent = "";
-  if (m.grade !== "good" && hasClickableLine(m)) {
+  if (!isPositiveGrade(m.grade) && hasClickableLine(m)) {
     renderLineChips(az.evalLine, m, (n) => startVariation(ply - 1, n));
     az.evalLine.dataset.ply = String(ply - 1);
   }
@@ -1943,7 +1976,8 @@ function renderEvalInfo(ply) {
 
 function renderEvalLegend() {
   az.evalLegend.textContent = "";
-  for (const g of ["inaccuracy", "mistake", "blunder"]) {
+  const GRADE_NOUN_PLURAL = { brilliant: "brilliant moves", inaccuracy: "inaccuracies", mistake: "mistakes", blunder: "blunders" };
+  for (const g of ["brilliant", "inaccuracy", "mistake", "blunder"]) {
     const matches = gradeMatches(g);
     const item = document.createElement("button");
     item.type = "button";
@@ -1954,7 +1988,7 @@ function renderEvalLegend() {
     dot.className = "evalLegendDot";
     dot.style.background = EVAL_GRADE_COLORS[g];
     item.appendChild(dot);
-    const noun = matches.length === 1 ? g : g === "inaccuracy" ? "inaccuracies" : g + "s";
+    const noun = matches.length === 1 ? (g === "brilliant" ? "brilliant move" : g) : GRADE_NOUN_PLURAL[g];
     item.appendChild(document.createTextNode(`${matches.length} ${noun}`));
     item.title = matches.length ? `Jump to the next ${g}` : "";
     item.addEventListener("click", () => jumpToGrade(g));

@@ -41,3 +41,7 @@ flatpak-builder --user --install --force-clean build-dir dev.maiachess.MaiaChess
 
 Plain `cargo build --release`, no Tauri bundler — installs binary + `.desktop` + metainfo by hand. CI runs this on tag push. `cargo tauri build` works too, for a local AppImage/deb.
 
+
+## attributions
+
+Move classification badges and brilliant move logic adapted from [WintrChess](https://github.com/WintrCat/wintrchess) (GPL-3.0),
