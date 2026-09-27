@@ -1185,14 +1185,23 @@ function boardFenOnly() {
   return boardToPlacement(editorBoardState) + " w - - 0 1";
 }
 
+// checkboxes go stale when the board is cleared/edited, so verify against the actual pieces
+function canCastle(board, side, kingSide) {
+  const rank = side === "w" ? "1" : "8";
+  const king = side === "w" ? "K" : "k";
+  const rook = side === "w" ? "R" : "r";
+  const rookFile = kingSide ? "h" : "a";
+  return board["e" + rank] === king && board[rookFile + rank] === rook;
+}
+
 function buildEditorFen() {
   const placement = boardToPlacement(editorBoardState);
   const turn = ed.turnSelect.value;
   let castling = "";
-  if (ed.castleWK.checked) castling += "K";
-  if (ed.castleWQ.checked) castling += "Q";
-  if (ed.castleBK.checked) castling += "k";
-  if (ed.castleBQ.checked) castling += "q";
+  if (ed.castleWK.checked && canCastle(editorBoardState, "w", true)) castling += "K";
+  if (ed.castleWQ.checked && canCastle(editorBoardState, "w", false)) castling += "Q";
+  if (ed.castleBK.checked && canCastle(editorBoardState, "b", true)) castling += "k";
+  if (ed.castleBQ.checked && canCastle(editorBoardState, "b", false)) castling += "q";
   if (!castling) castling = "-";
   return `${placement} ${turn} ${castling} - 0 1`;
 }
@@ -1209,7 +1218,11 @@ function loadStandardIntoEditor() {
 }
 
 ed.standardBtn.addEventListener("click", loadStandardIntoEditor);
-ed.clearBtn.addEventListener("click", () => { editorBoardState = {}; renderEditorBoard(); });
+ed.clearBtn.addEventListener("click", () => {
+  editorBoardState = {};
+  ed.castleWK.checked = ed.castleWQ.checked = ed.castleBK.checked = ed.castleBQ.checked = false;
+  renderEditorBoard();
+});
 [ed.turnSelect, ed.castleWK, ed.castleWQ, ed.castleBK, ed.castleBQ].forEach((el) => {
   el.addEventListener("change", updateFenPreview);
 });
