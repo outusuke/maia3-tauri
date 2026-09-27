@@ -158,7 +158,12 @@ fn is_brilliant_sacrifice(
     if !has_a_choice(board_before) {
         return false;
     }
-    see_on_square(board_after, mv.get_dest(), !mover) >= min_sacrifice
+    let captured_value = board_before
+        .piece_on(mv.get_dest())
+        .map(piece_value)
+        .unwrap_or(0);
+    let opponent_see = see_on_square(board_after, mv.get_dest(), !mover);
+    (opponent_see - captured_value) >= min_sacrifice
 }
 
 /// Reuses the top-line search for the played move's eval when it matches; otherwise runs a second single-line search.
