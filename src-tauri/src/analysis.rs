@@ -1,7 +1,7 @@
 use crate::engine::Engine;
 use crate::game::move_to_san;
 use crate::pgn::ParsedGame;
-use chess::{Board, ChessMove, Color};
+use chess::{BitBoard, Board, ChessMove, Color, MoveGen, Piece, Square};
 use serde::Serialize;
 use std::str::FromStr;
 use std::time::Duration;
@@ -9,6 +9,8 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MoveGrade {
+    /// Good, but also sacrifices material the opponent could win back — engine says it's still fine.
+    Brilliant,
     Good,
     Inaccuracy,
     Mistake,
@@ -50,6 +52,8 @@ pub struct AnalysisConfig {
     pub blunder_wc: f64,
     pub acceptable_cp: i32,
     pub move_timeout: Duration,
+    /// Material (pawn=1..queen=9) the opponent must be able to win back to count as a sacrifice.
+    pub brilliant_min_sacrifice: i32,
 }
 
 impl Default for AnalysisConfig {
@@ -62,6 +66,7 @@ impl Default for AnalysisConfig {
             blunder_wc: 0.3,
             acceptable_cp: 20,
             move_timeout: Duration::from_secs(60),
+            brilliant_min_sacrifice: 3,
         }
     }
 }
@@ -90,6 +95,72 @@ fn flip_if_black(value: i32, side_to_move: Color) -> i32 {
     }
 }
 
+fn piece_value(piece: Piece) -> i32 {
+    match piece {
+        Piece::Pawn => 1,
+        Piece::Knight | Piece::Bishop => 3,
+        Piece::Rook => 5,
+        Piece::Queen => 9,
+        Piece::King => 0,
+    }
+}
+
+/// Flips side-to-move via a null move; `None` if that side is in check and can't get a free move.
+fn board_for_side(board: &Board, side: Color) -> Option<Board> {
+    if board.side_to_move() == side {
+        Some(*board)
+    } else {
+        board.null_move()
+    }
+}
+
+/// Static exchange eval: material `side_to_move` nets capturing on `sq` with cheapest-piece-first,
+/// both sides bailing out once recapturing would lose them material.
+fn see_on_square(board: &Board, sq: Square, side_to_move: Color) -> i32 {
+    let Some(b) = board_for_side(board, side_to_move) else {
+        return 0;
+    };
+    let Some(captured) = b.piece_on(sq) else {
+        return 0;
+    };
+
+    let mut attackers = MoveGen::new_legal(&b);
+    attackers.set_iterator_mask(BitBoard::from_square(sq));
+    let cheapest = attackers
+        .filter_map(|mv| b.piece_on(mv.get_source()).map(|p| (mv, piece_value(p))))
+        .min_by_key(|(_, value)| *value);
+
+    let Some((mv, _)) = cheapest else {
+        return 0;
+    };
+
+    let after = b.make_move_new(mv);
+    let reply = see_on_square(&after, sq, !side_to_move);
+    (piece_value(captured) - reply).max(0)
+}
+
+/// A forced move can't be a sacrifice — there was nothing else to play.
+fn has_a_choice(board: &Board) -> bool {
+    MoveGen::new_legal(board).count() > 1
+}
+
+/// True if the played (already-Good) move also hangs real material for the opponent to win back.
+fn is_brilliant_sacrifice(
+    board_before: &Board,
+    board_after: &Board,
+    mv: ChessMove,
+    mover: Color,
+    min_sacrifice: i32,
+) -> bool {
+    if mv.get_promotion().is_some() {
+        return false;
+    }
+    if !has_a_choice(board_before) {
+        return false;
+    }
+    see_on_square(board_after, mv.get_dest(), !mover) >= min_sacrifice
+}
+
 /// Reuses the top-line search for the played move's eval when it matches; otherwise runs a second single-line search.
 pub fn analyze_game(
     engine: &mut Engine,
@@ -112,13 +183,14 @@ pub fn analyze_game(
         let best_effective = effective_cp(best.score_cp, best.mate);
 
         let mv = ChessMove::from_str(uci).map_err(|e| format!("bad uci '{uci}': {e}"))?;
+        let board_after = board.make_move_new(mv);
         let played_is_best = best.pv.first().map(|m| m.as_str()) == Some(uci.as_str());
 
         // Eval after the played move, from the mover's perspective so it compares with `best_effective`.
         let played_effective = if played_is_best {
             best_effective
         } else {
-            let after_fen = format!("{}", board.make_move_new(mv));
+            let after_fen = format!("{board_after}");
             let after_lines = engine.analyze(&after_fen, config.depth, 1, config.move_timeout)?;
             let after_best = after_lines
                 .first()
@@ -128,7 +200,7 @@ pub fn analyze_game(
         };
 
         let loss = (winning_chances(best_effective) - winning_chances(played_effective)).max(0.0);
-        let grade = if loss < config.inaccuracy_wc {
+        let mut grade = if loss < config.inaccuracy_wc {
             MoveGrade::Good
         } else if loss < config.mistake_wc {
             MoveGrade::Inaccuracy
@@ -137,6 +209,12 @@ pub fn analyze_game(
         } else {
             MoveGrade::Blunder
         };
+
+        if grade == MoveGrade::Good
+            && is_brilliant_sacrifice(&board, &board_after, mv, side_to_move, config.brilliant_min_sacrifice)
+        {
+            grade = MoveGrade::Brilliant;
+        }
 
         let eval_before_cp = best.score_cp.map(|cp| flip_if_black(cp, side_to_move));
         let mate_before = best.mate.map(|m| flip_if_black(m, side_to_move));
@@ -171,7 +249,7 @@ pub fn analyze_game(
             san: san.clone(),
             uci: uci.clone(),
             fen_before: fen_before.clone(),
-            fen_after: format!("{}", board.make_move_new(mv)),
+            fen_after: format!("{board_after}"),
             grade,
             eval_before_cp,
             eval_after_cp,
@@ -185,7 +263,7 @@ pub fn analyze_game(
             acceptable_moves,
         });
 
-        board = board.make_move_new(mv);
+        board = board_after;
     }
 
     Ok(out)
