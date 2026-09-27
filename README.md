@@ -6,7 +6,7 @@ Desktop chess app (Tauri + Rust) for playing against [Maia-3](https://github.com
 
 ## features
 
-- play vs Maia-3: pick side, Elo (1100–2900, adjustable mid-game), temperature/top-p, custom FEN
+- play vs Maia-3: pick side, Elo (500–2500, adjustable mid-game), temperature/top-p, custom FEN
 - analyze: paste/send a PGN, Stockfish grades every move (good/inaccuracy/mistake/blunder)
 - practice: flagged mistakes become puzzles — solve, reveal, or step through the line
 
