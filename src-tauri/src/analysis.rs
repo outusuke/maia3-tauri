@@ -144,7 +144,10 @@ fn has_a_choice(board: &Board) -> bool {
     MoveGen::new_legal(board).count() > 1
 }
 
-/// True if the played (already-Good) move also hangs real material for the opponent to win back.
+/// True if the played (already-Good) move also hangs real material for the opponent to win back,
+/// net of whatever the move itself just captured. Without the net, any fair trade (e.g. a plain
+/// knight-for-knight or queen-for-queen swap) shows the opponent "winning back" the full value of
+/// the piece that just landed, even though the mover captured an equal amount to get there.
 fn is_brilliant_sacrifice(
     board_before: &Board,
     board_after: &Board,
@@ -158,7 +161,12 @@ fn is_brilliant_sacrifice(
     if !has_a_choice(board_before) {
         return false;
     }
-    see_on_square(board_after, mv.get_dest(), !mover) >= min_sacrifice
+    let captured_value = board_before
+        .piece_on(mv.get_dest())
+        .map(piece_value)
+        .unwrap_or(0);
+    let opponent_see = see_on_square(board_after, mv.get_dest(), !mover);
+    (opponent_see - captured_value) >= min_sacrifice
 }
 
 /// Reuses the top-line search for the played move's eval when it matches; otherwise runs a second single-line search.
