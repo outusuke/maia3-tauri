@@ -5,8 +5,6 @@ const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];
 const RANKS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const STANDARD_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
-// okay.png is WintrChess's "solid, nothing to improve" icon — the closest fit for our single "good" bucket.
-// best/excellent/critical/forced/miss/error/risky/theory/loading ship in src/img/classifications/ for later use.
 const GRADE_BADGE_ICON = {
   brilliant: "img/classifications/brilliant.png",
   good: "img/classifications/okay.png",
