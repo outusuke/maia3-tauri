@@ -1315,6 +1315,7 @@ const az = {
   puzzleActiveActions: document.getElementById("puzzleActiveActions"),
   puzzleDoneActions: document.getElementById("puzzleDoneActions"),
   puzzleRevealBtn: document.getElementById("puzzleRevealBtn"),
+  puzzleBackBtn: document.getElementById("puzzleBackBtn"),
   puzzleExitBtn: document.getElementById("puzzleExitBtn"),
   puzzleExitBtn2: document.getElementById("puzzleExitBtn2"),
   puzzleRestartBtn: document.getElementById("puzzleRestartBtn"),
@@ -1832,7 +1833,7 @@ function selectPuzzleNearPly(ply) {
   });
   if (best === puzzleIndex) return;
   puzzleIndex = best;
-  loadPuzzle();
+  loadPuzzle(true);
 }
 
 // Jumps to the next move of this grade after the position on screen, wrapping back to the first.
@@ -1844,7 +1845,7 @@ function jumpToGrade(g) {
     const next = matches.find((i) => i > cur);
     const target = analysis[next === undefined ? matches[0] : next];
     const idx = puzzles.indexOf(target);
-    if (idx >= 0 && idx !== puzzleIndex) { puzzleIndex = idx; loadPuzzle(); }
+    if (idx >= 0 && idx !== puzzleIndex) { puzzleIndex = idx; loadPuzzle(true); }
     return;
   }
   gradeFilter = g;
@@ -2072,6 +2073,7 @@ new ResizeObserver(() => drawEvalGraph()).observe(az.evalGraph);
 // ---- Puzzle mode ----
 let puzzleMode = false;
 let puzzleIndex = 0;
+let puzzleHomeIndex = 0;
 let puzzleSolved = 0;
 let puzzleLocked = false;
 let puzzleFen = null;
@@ -2099,7 +2101,9 @@ function enterPuzzleMode() {
   loadPuzzle();
 }
 
-function loadPuzzle() {
+function loadPuzzle(browsing = false) {
+  if (!browsing) puzzleHomeIndex = puzzleIndex;
+  az.puzzleBackBtn.style.display = puzzleIndex === puzzleHomeIndex ? "none" : "";
   const puzzle = puzzles[puzzleIndex];
   puzzleFen = puzzle.fenBefore;
   puzzleSelected = null;
@@ -2290,6 +2294,11 @@ az.puzzleRevealBtn.addEventListener("click", () => {
   fillPuzzleFeedback(`Answer: ${puzzle.bestMoveSan || "(no line available)"}`, puzzle);
   showPuzzleNext();
   renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+});
+
+az.puzzleBackBtn.addEventListener("click", () => {
+  puzzleIndex = puzzleHomeIndex;
+  loadPuzzle();
 });
 
 az.puzzleExitBtn.addEventListener("click", exitPuzzleMode);
