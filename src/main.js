@@ -1769,7 +1769,11 @@ function updatePracticeControls() {
   az.practiceBtn.textContent = puzzles.length > 0
     ? `Practice My Mistakes (${puzzles.length}) →` : "No mistakes for this side";
 }
-az.practiceSideSelect.addEventListener("change", updatePracticeControls);
+az.practiceSideSelect.addEventListener("change", () => {
+  updatePracticeControls();
+  if (!puzzleMode) return;
+  if (puzzles.length > 0) enterPuzzleMode(); else exitPuzzleMode();
+});
 az.practiceBtn.addEventListener("click", enterPuzzleMode);
 
 // Eval graph: Y axis is win probability (Lichess curve); linear centipawns would flatten most games near zero.
@@ -1804,6 +1808,7 @@ function evalLabel(cp, mate) {
 // Follows the "Grade whose moves" selector, same as the move list.
 let gradeFilter = null; // which legend button is "active" for cycling; doesn't hide anything
 function evalMoveVisible(m) {
+  if (puzzleMode) return puzzles.includes(m);
   const side = az.sideSelect.value;
   return side === "both" || sideToMove(m.fenBefore) === side;
 }
@@ -1813,10 +1818,35 @@ function gradeMatches(g) {
   return analysis.reduce((acc, m, i) => { if (m.grade === g && evalMoveVisible(m)) acc.push(i); return acc; }, []);
 }
 
+function evalCursorPly() {
+  if (puzzleMode && puzzles[puzzleIndex]) return Math.max(0, analysis.indexOf(puzzles[puzzleIndex]));
+  return azViewPly;
+}
+
+function selectPuzzleNearPly(ply) {
+  if (ply === null || puzzles.length === 0) return;
+  let best = puzzleIndex, bestDist = Infinity;
+  puzzles.forEach((p, i) => {
+    const d = Math.abs(analysis.indexOf(p) + 1 - ply); // dots sit one ply after the mistake
+    if (d < bestDist) { bestDist = d; best = i; }
+  });
+  if (best === puzzleIndex) return;
+  puzzleIndex = best;
+  loadPuzzle();
+}
+
 // Jumps to the next move of this grade after the position on screen, wrapping back to the first.
 function jumpToGrade(g) {
   const matches = gradeMatches(g);
   if (matches.length === 0) return;
+  if (puzzleMode) {
+    const cur = evalCursorPly();
+    const next = matches.find((i) => i > cur);
+    const target = analysis[next === undefined ? matches[0] : next];
+    const idx = puzzles.indexOf(target);
+    if (idx >= 0 && idx !== puzzleIndex) { puzzleIndex = idx; loadPuzzle(); }
+    return;
+  }
   gradeFilter = g;
   const next = matches.find((i) => i + 1 > azViewPly);
   variation = null;
@@ -1841,6 +1871,7 @@ function drawEvalGraph() {
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
 
   const n = analysis.length;
+  const curPly = evalCursorPly();
   const left = 30, right = 10, top = 10, bottom = 20;
   const plotW = W - left - right;
   const plotH = H - top - bottom;
@@ -1895,14 +1926,14 @@ function drawEvalGraph() {
     "stroke-linejoin": "round", "stroke-linecap": "round",
   }, svg);
 
-  if (evalHoverPly !== null && evalHoverPly !== azViewPly) {
+  if (evalHoverPly !== null && evalHoverPly !== curPly) {
     svgEl("line", {
       x1: xAt(evalHoverPly), x2: xAt(evalHoverPly), y1: top, y2: top + plotH,
       stroke: "rgba(255,255,255,0.35)", "stroke-width": 1,
     }, svg);
   }
 
-  const cx = xAt(azViewPly);
+  const cx = xAt(curPly);
   svgEl("line", {
     x1: cx, x2: cx, y1: top, y2: top + plotH, stroke: "#5a86f5", "stroke-width": 1.5,
   }, svg);
@@ -1914,18 +1945,19 @@ function drawEvalGraph() {
     if (!color || !evalMoveVisible(m)) continue;
     const [x, y] = pts[i + 1];
     const r = EVAL_GRADE_RADIUS[m.grade];
-    if (i + 1 === azViewPly || i + 1 === evalHoverPly) {
+    const isCurPuzzle = puzzleMode && puzzles[puzzleIndex] === m;
+    if (isCurPuzzle || i + 1 === curPly || i + 1 === evalHoverPly) {
       svgEl("circle", { cx: x, cy: y, r: r + 3.5, fill: "none", stroke: "#fff", "stroke-width": 1.5 }, svg);
     }
     svgEl("circle", { cx: x, cy: y, r, fill: color, stroke: "#16181d", "stroke-width": 1.5 }, svg);
   }
-  const curMove = azViewPly > 0 ? analysis[azViewPly - 1] : null;
+  const curMove = curPly > 0 ? analysis[curPly - 1] : null;
   if (!curMove || !EVAL_GRADE_COLORS[curMove.grade] || !evalMoveVisible(curMove)) {
-    const [x, y] = pts[azViewPly];
+    const [x, y] = pts[curPly];
     svgEl("circle", { cx: x, cy: y, r: 3.5, fill: "#fff", stroke: "#5a86f5", "stroke-width": 2 }, svg);
   }
 
-  renderEvalInfo(evalHoverPly !== null ? evalHoverPly : azViewPly);
+  renderEvalInfo(evalHoverPly !== null ? evalHoverPly : curPly);
   renderEvalLegend();
 }
 
@@ -1955,7 +1987,7 @@ function renderEvalInfo(ply) {
   const after = evalLabel(m.evalAfterCp, m.mateAfter);
   add(` · eval ${before === after ? after : `${before} → ${after}`}`, "evalMuted");
 
-  if (!isPositiveGrade(m.grade) && m.bestMoveSan) {
+  if (!puzzleMode && !isPositiveGrade(m.grade) && m.bestMoveSan) {
     add(" · better: ", "evalMuted");
     const b = document.createElement(hasClickableLine(m) ? "span" : "b");
     b.textContent = m.bestMoveSan;
@@ -1968,7 +2000,7 @@ function renderEvalInfo(ply) {
   }
 
   az.evalLine.textContent = "";
-  if (!isPositiveGrade(m.grade) && hasClickableLine(m)) {
+  if (!puzzleMode && !isPositiveGrade(m.grade) && hasClickableLine(m)) {
     renderLineChips(az.evalLine, m, (n) => startVariation(ply - 1, n));
     az.evalLine.dataset.ply = String(ply - 1);
   }
@@ -2003,7 +2035,8 @@ function evalPlyFromEvent(e) {
   return Math.max(0, Math.min(evalGeom.n, Math.round(frac * evalGeom.n)));
 }
 function evalSeek(ply) {
-  if (ply === null || puzzleMode) return;
+  if (ply === null) return;
+  if (puzzleMode) { selectPuzzleNearPly(ply); return; }
   if (ply === azViewPly && !variation) return;
   variation = null;
   azViewPly = ply;
@@ -2083,6 +2116,7 @@ function loadPuzzle() {
   az.puzzleProgress.textContent = `Puzzle ${puzzleIndex + 1} / ${puzzles.length} — solved ${puzzleSolved}`;
   az.puzzlePrompt.innerHTML = `Find the best move for <b>${mover}</b>.`;
   renderPuzzleBoard(mover === "black");
+  drawEvalGraph();
 }
 
 function renderPuzzleBoard(flip) {
