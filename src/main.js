@@ -63,9 +63,7 @@ function beginPointerDrag(pointerEvent, spec) {
   }
 
   function elementUnder(clientX, clientY) {
-    if (ghost) ghost.style.display = "none";
     const under = document.elementFromPoint(clientX, clientY);
-    if (ghost) ghost.style.display = "";
     if (!under || !under.closest) return null;
     return under.closest(".square[data-square]") || under.closest(".tray");
   }
@@ -455,6 +453,7 @@ function renderChessBoard(el, fen, opts) {
         img.src = pieceImageSrc(piece);
         img.alt = piece;
         img.draggable = false;
+        img.decoding = "sync";
         div.appendChild(img);
       }
 
