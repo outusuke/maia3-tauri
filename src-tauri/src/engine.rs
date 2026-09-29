@@ -56,7 +56,9 @@ fn parse_info_line(line: &str) -> Option<PvLine> {
         }
     }
 
-    if pv.is_empty() {
+    // Mated/stalemated positions come back as `depth 0` with a score but no pv.
+    let terminal = depth == 0 && (score_cp.is_some() || mate.is_some());
+    if pv.is_empty() && !terminal {
         None
     } else {
         Some(PvLine {

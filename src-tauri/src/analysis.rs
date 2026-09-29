@@ -54,6 +54,9 @@ pub struct AnalysisConfig {
     pub move_timeout: Duration,
     /// Material (pawn=1..queen=9) the opponent must be able to win back to count as a sacrifice.
     pub brilliant_min_sacrifice: i32,
+    /// Brilliant is skipped when the mover is already clearly winning before the move, or clearly
+    /// losing before/after it (centipawns, mover's perspective).
+    pub brilliant_max_eval_cp: i32,
 }
 
 impl Default for AnalysisConfig {
@@ -67,6 +70,7 @@ impl Default for AnalysisConfig {
             acceptable_cp: 20,
             move_timeout: Duration::from_secs(60),
             brilliant_min_sacrifice: 3,
+            brilliant_max_eval_cp: 300,
         }
     }
 }
@@ -215,7 +219,13 @@ pub fn analyze_game(
             MoveGrade::Blunder
         };
 
+        // A sacrifice in a position that is already decided isn't brilliant.
+        let decided = best_effective >= config.brilliant_max_eval_cp
+            || best_effective <= -config.brilliant_max_eval_cp
+            || played_effective <= -config.brilliant_max_eval_cp;
+
         if grade == MoveGrade::Good
+            && !decided
             && is_brilliant_sacrifice(&board, &board_after, mv, side_to_move, config.brilliant_min_sacrifice)
         {
             grade = MoveGrade::Brilliant;
