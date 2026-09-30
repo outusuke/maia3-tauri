@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -186,7 +186,51 @@ impl Engine {
         self.set_multipv(multipv.max(1))?;
         self.send(&format!("position fen {}", uci_fen(fen)))?;
         self.send(&format!("go depth {depth}"))?;
+        self.read_search(timeout)
+    }
 
+    /// `searchmoves` so a human-likely blunder still gets a real eval instead of dropping off a top-N list.
+    pub fn analyze_candidates(
+        &mut self,
+        fen: &str,
+        depth: u32,
+        candidates: &[String],
+        timeout: Duration,
+    ) -> Result<Vec<PvLine>, String> {
+        if candidates.is_empty() {
+            return Ok(Vec::new());
+        }
+        self.set_multipv(candidates.len() as u32)?;
+        self.send(&format!("position fen {}", uci_fen(fen)))?;
+        self.send(&format!(
+            "go depth {depth} searchmoves {}",
+            candidates.join(" ")
+        ))?;
+        self.read_search(timeout)
+    }
+
+    /// Log-probability of the move actually played at each of `plies`, one entry per requested rating.
+    pub fn maia_estimate(
+        &mut self,
+        start_fen: &str,
+        moves: &[String],
+        plies: &[usize],
+        ratings: &[u32],
+        timeout: Duration,
+    ) -> Result<Vec<PlyLogProbs>, String> {
+        self.send(&position_command(start_fen, moves))?;
+        let list: Vec<String> = ratings.iter().map(|r| r.to_string()).collect();
+        let wanted: Vec<String> = plies.iter().map(|p| p.to_string()).collect();
+        self.send(&format!("estimate {} {}", wanted.join(","), list.join(" ")))?;
+        let line = self
+            .wait_for("estimate ", timeout)
+            .ok_or("timed out waiting for the rating estimate (is the engine an older maia3_onnx_uci.py?)")?;
+        let parsed: EstimateReply = serde_json::from_str(&line["estimate ".len()..])
+            .map_err(|e| format!("could not parse rating estimate: {e}"))?;
+        Ok(parsed.plies)
+    }
+
+    fn read_search(&mut self, timeout: Duration) -> Result<Vec<PvLine>, String> {
         let deadline = Instant::now() + timeout;
         let mut lines: HashMap<u32, PvLine> = HashMap::new();
 
@@ -216,6 +260,44 @@ impl Engine {
         result.sort_by_key(|l| l.multipv);
         Ok(result)
     }
+
+    /// Needs the `insights` command from our maia3_onnx_uci.py; sends the whole game so the 8-ply history is real.
+    pub fn maia_insights(
+        &mut self,
+        start_fen: &str,
+        moves: &[String],
+        ratings: &[u32],
+        timeout: Duration,
+    ) -> Result<MaiaInsights, String> {
+        self.send(&position_command(start_fen, moves))?;
+        let list: Vec<String> = ratings.iter().map(|r| r.to_string()).collect();
+        self.send(&format!("insights {}", list.join(" ")))?;
+        let line = self
+            .wait_for("insights ", timeout)
+            .ok_or("timed out waiting for Maia insights (is the engine an older maia3_onnx_uci.py?)")?;
+        serde_json::from_str(&line["insights ".len()..])
+            .map_err(|e| format!("could not parse Maia insights: {e}"))
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlyLogProbs {
+    pub ply: usize,
+    pub logp: Vec<f64>,
+}
+
+#[derive(Deserialize)]
+struct EstimateReply {
+    plies: Vec<PlyLogProbs>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MaiaInsights {
+    pub ratings: Vec<u32>,
+    pub policies: Vec<HashMap<String, f64>>,
+    /// Side to move's expected score (win + draw/2).
+    pub win_prob: Vec<f64>,
 }
 
 impl Drop for Engine {
