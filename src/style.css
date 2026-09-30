@@ -582,6 +582,7 @@ body.is-dragging, body.is-dragging * {
 .flaggedItem .line.lineMoves { font-family: monospace; font-size: 12px; margin-top: 4px; }
 .puzzleLine { margin-top: 6px; font-family: monospace; }
 .puzzleLine .lineMoves { display: inline; }
+.puzzleNav { margin-top: 8px; }
 
 #variationBar {
   flex-direction: column;
