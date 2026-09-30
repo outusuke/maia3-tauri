@@ -1,7 +1,8 @@
+use crate::brilliant::{is_brilliant, BrilliantInput};
 use crate::engine::Engine;
 use crate::game::move_to_san;
 use crate::pgn::ParsedGame;
-use chess::{BitBoard, Board, ChessMove, Color, MoveGen, Piece, Square};
+use chess::{Board, ChessMove, Color};
 use serde::Serialize;
 use std::str::FromStr;
 use std::time::Duration;
@@ -9,7 +10,6 @@ use std::time::Duration;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum MoveGrade {
-    /// Good, but also sacrifices material the opponent could win back — engine says it's still fine.
     Brilliant,
     Good,
     Inaccuracy,
@@ -52,11 +52,10 @@ pub struct AnalysisConfig {
     pub blunder_wc: f64,
     pub acceptable_cp: i32,
     pub move_timeout: Duration,
-    /// Material (pawn=1..queen=9) the opponent must be able to win back to count as a sacrifice.
-    pub brilliant_min_sacrifice: i32,
-    /// Brilliant is skipped when the mover is already clearly winning before the move, or clearly
-    /// losing before/after it (centipawns, mover's perspective).
+    /// No brilliant if the mover was already this far ahead (cp).
     pub brilliant_max_eval_cp: i32,
+    /// No brilliant if the move leaves the mover below this (cp).
+    pub brilliant_min_eval_after_cp: i32,
 }
 
 impl Default for AnalysisConfig {
@@ -69,8 +68,8 @@ impl Default for AnalysisConfig {
             blunder_wc: 0.3,
             acceptable_cp: 20,
             move_timeout: Duration::from_secs(60),
-            brilliant_min_sacrifice: 3,
             brilliant_max_eval_cp: 300,
+            brilliant_min_eval_after_cp: 0,
         }
     }
 }
@@ -97,77 +96,6 @@ fn flip_if_black(value: i32, side_to_move: Color) -> i32 {
     } else {
         -value
     }
-}
-
-fn piece_value(piece: Piece) -> i32 {
-    match piece {
-        Piece::Pawn => 1,
-        Piece::Knight | Piece::Bishop => 3,
-        Piece::Rook => 5,
-        Piece::Queen => 9,
-        Piece::King => 0,
-    }
-}
-
-/// Flips side-to-move via a null move; `None` if that side is in check and can't get a free move.
-fn board_for_side(board: &Board, side: Color) -> Option<Board> {
-    if board.side_to_move() == side {
-        Some(*board)
-    } else {
-        board.null_move()
-    }
-}
-
-/// Static exchange eval: material `side_to_move` nets capturing on `sq` with cheapest-piece-first,
-/// both sides bailing out once recapturing would lose them material.
-fn see_on_square(board: &Board, sq: Square, side_to_move: Color) -> i32 {
-    let Some(b) = board_for_side(board, side_to_move) else {
-        return 0;
-    };
-    let Some(captured) = b.piece_on(sq) else {
-        return 0;
-    };
-
-    let mut attackers = MoveGen::new_legal(&b);
-    attackers.set_iterator_mask(BitBoard::from_square(sq));
-    let cheapest = attackers
-        .filter_map(|mv| b.piece_on(mv.get_source()).map(|p| (mv, piece_value(p))))
-        .min_by_key(|(_, value)| *value);
-
-    let Some((mv, _)) = cheapest else {
-        return 0;
-    };
-
-    let after = b.make_move_new(mv);
-    let reply = see_on_square(&after, sq, !side_to_move);
-    (piece_value(captured) - reply).max(0)
-}
-
-/// A forced move can't be a sacrifice — there was nothing else to play.
-fn has_a_choice(board: &Board) -> bool {
-    MoveGen::new_legal(board).count() > 1
-}
-
-/// True if the played (already-Good) move also hangs real material for the opponent to win back.
-fn is_brilliant_sacrifice(
-    board_before: &Board,
-    board_after: &Board,
-    mv: ChessMove,
-    mover: Color,
-    min_sacrifice: i32,
-) -> bool {
-    if mv.get_promotion().is_some() {
-        return false;
-    }
-    if !has_a_choice(board_before) {
-        return false;
-    }
-    let captured_value = board_before
-        .piece_on(mv.get_dest())
-        .map(piece_value)
-        .unwrap_or(0);
-    let opponent_see = see_on_square(board_after, mv.get_dest(), !mover);
-    (opponent_see - captured_value) >= min_sacrifice
 }
 
 /// Reuses the top-line search for the played move's eval when it matches; otherwise runs a second single-line search.
@@ -219,14 +147,17 @@ pub fn analyze_game(
             MoveGrade::Blunder
         };
 
-        // A sacrifice in a position that is already decided isn't brilliant.
-        let decided = best_effective >= config.brilliant_max_eval_cp
-            || best_effective <= -config.brilliant_max_eval_cp
-            || played_effective <= -config.brilliant_max_eval_cp;
-
         if grade == MoveGrade::Good
-            && !decided
-            && is_brilliant_sacrifice(&board, &board_after, mv, side_to_move, config.brilliant_min_sacrifice)
+            && is_brilliant(&BrilliantInput {
+                before: &board,
+                after: &board_after,
+                mv,
+                mover: side_to_move,
+                eval_before_cp: best_effective,
+                eval_after_cp: played_effective,
+                max_eval_before_cp: config.brilliant_max_eval_cp,
+                min_eval_after_cp: config.brilliant_min_eval_after_cp,
+            })
         {
             grade = MoveGrade::Brilliant;
         }
