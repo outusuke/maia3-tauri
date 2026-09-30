@@ -19,6 +19,7 @@ Usage (same shape as the original uci-wrapper.sh):
 """
 
 import argparse
+import json
 import sys
 from collections import deque
 
@@ -161,7 +162,7 @@ def clamp_multipv(value):
 
 
 class Maia3ONNXEngine:
-    def __init__(self, onnx_path, history, use_uci_history, elo, temperature, top_p, multipv, seed):
+    def __init__(self, onnx_path, history, use_uci_history, elo, temperature, top_p, multipv, seed, threads=4):
         self.history_len = history
         self.use_uci_history = use_uci_history
         self.self_elo = elo
@@ -177,7 +178,7 @@ class Maia3ONNXEngine:
 
         so = ort.SessionOptions()
         # Keep intra-op threads modest; a dual-core box has no headroom for contention.
-        so.intra_op_num_threads = 4
+        so.intra_op_num_threads = threads
         self.session = ort.InferenceSession(onnx_path, sess_options=so,
                                              providers=["CPUExecutionProvider"])
 
@@ -185,6 +186,7 @@ class Maia3ONNXEngine:
         self.history = deque(maxlen=history)
         self.pending_bestmove = None
         self.pending_search = False
+        self.game_start, self.game_moves = chess.Board(), []
         self._reset_history()
 
     def _reset_history(self):
@@ -268,6 +270,91 @@ class Maia3ONNXEngine:
 
         return move, top_moves
 
+
+    def cmd_insights(self, line):
+        # Softmax over legal moves at each Elo (temperature 1, no top-p), whatever the play options are.
+        try:
+            elos = [int(x) for x in line.split()[1:]]
+        except ValueError:
+            elos = []
+        legal_mask = None if self.board.is_game_over() else get_legal_moves_mask(self.board, self.all_moves_dict)
+        if not elos or legal_mask is None or not legal_mask.any():
+            print("insights " + json.dumps({"ratings": elos, "policies": [], "winProb": []}), flush=True)
+            return
+
+        n = len(elos)
+        tokens = self._tokens_from_history(self.history)[np.newaxis, :, :]
+        tokens = np.repeat(tokens, n, axis=0)
+        elo_arr = np.array(elos, dtype=np.float32)
+        logits_move, logits_value = self._run(tokens, elo_arr, elo_arr)
+
+        legal_idxs = np.flatnonzero(legal_mask)
+        ucis = []
+        for idx in legal_idxs:
+            mv = self._move_from_index(idx)
+            ucis.append(mv.uci() if mv is not None else None)
+
+        policies, win_prob = [], []
+        for i in range(n):
+            legal_logits = logits_move[i].astype(np.float64)[legal_idxs]
+            probs = softmax(legal_logits)
+            # Tail pruned to keep the payload small.
+            policies.append({u: round(float(p), 5) for u, p in zip(ucis, probs) if u is not None and p >= 0.0005})
+            loss, draw, win = softmax(logits_value[i].astype(np.float64)).tolist()
+            win_prob.append(round(win + 0.5 * draw, 4))
+
+        print("insights " + json.dumps({"ratings": elos, "policies": policies, "winProb": win_prob}), flush=True)
+
+    def cmd_estimate(self, line):
+        # `estimate P1,P2,... elo...`: log-prob of the move actually played at each listed ply, once per Elo.
+        try:
+            parts = line.split()
+            wanted = [int(x) for x in parts[1].split(",") if x]
+            elos = [int(x) for x in parts[2:]]
+        except (ValueError, IndexError):
+            wanted, elos = [], []
+        if not elos:
+            print("estimate " + json.dumps({"plies": []}), flush=True)
+            return
+
+        board = self.game_start.copy(stack=False)
+        boards, toks = [board.copy(stack=False)], [tokenize_board(board)]
+        for mv in self.game_moves:
+            board.push_uci(mv)
+            boards.append(board.copy(stack=False))
+            toks.append(tokenize_board(board))
+
+        entries = []
+        for i in (w for w in wanted if 0 <= w < len(self.game_moves)):
+            b = boards[i]
+            if b.legal_moves.count() < 2:
+                continue
+            uci = self.game_moves[i] if b.turn == chess.WHITE else mirror_move(self.game_moves[i])
+            played = self.all_moves_dict.get(uci)
+            mask = get_legal_moves_mask(b, self.all_moves_dict)
+            if played is None or not mask[played]:
+                continue
+            hist = toks[max(0, i - self.history_len + 1):i + 1] if self.use_uci_history else [toks[i]]
+            legal_idxs = np.flatnonzero(mask)
+            entries.append((i, get_historical_tokens(hist, self.history_len), legal_idxs, int(np.searchsorted(legal_idxs, played))))
+
+        n = len(elos)
+        elo_arr = np.array(elos, dtype=np.float32)
+        out = []
+        per_run = max(1, 256 // n)
+        for start in range(0, len(entries), per_run):
+            chunk = entries[start:start + per_run]
+            tokens = np.repeat(np.stack([e[1] for e in chunk]), n, axis=0)
+            logits, _ = self._run(tokens, np.tile(elo_arr, len(chunk)), np.tile(elo_arr, len(chunk)))
+            logits = logits.reshape(len(chunk), n, -1).astype(np.float64)
+            for k, (ply, _, legal_idxs, local) in enumerate(chunk):
+                legal = logits[k][:, legal_idxs]
+                peak = legal.max(axis=1, keepdims=True)
+                logp = legal[:, local] - (peak[:, 0] + np.log(np.exp(legal - peak).sum(axis=1)))
+                out.append({"ply": ply, "logp": [round(float(x), 4) for x in logp]})
+
+        print("estimate " + json.dumps({"plies": out}), flush=True)
+
     # -- UCI protocol --
 
     def cmd_uci(self):
@@ -330,6 +417,7 @@ class Maia3ONNXEngine:
             return
 
         moves = tokens[i + 1:] if i < len(tokens) and tokens[i] == "moves" else []
+        start_board = board.copy()
         self.pending_bestmove = None
         self.pending_search = False
 
@@ -358,6 +446,7 @@ class Maia3ONNXEngine:
                     return
             self.board = board
             self._reset_history()
+        self.game_start, self.game_moves = start_board, moves
 
     def cmd_go(self, line):
         move, top_moves = self.score_moves()
@@ -397,6 +486,10 @@ class Maia3ONNXEngine:
                 self.cmd_position(line)
             elif cmd == "go":
                 self.cmd_go(line)
+            elif cmd == "insights":
+                self.cmd_insights(line)
+            elif cmd == "estimate":
+                self.cmd_estimate(line)
             elif cmd == "setoption":
                 self.cmd_setoption(line)
             elif line == "quit":
@@ -418,12 +511,13 @@ def main():
                     help="RNG seed for temperature sampling. Omit for a fresh, "
                          "OS-entropy seed each run; pass a value to reproduce a "
                          "specific game.")
+    p.add_argument("--threads", type=int, default=4)
     args = p.parse_args()
 
     engine = Maia3ONNXEngine(
         onnx_path=args.onnx, history=args.history, use_uci_history=args.use_uci_history,
         elo=args.elo, temperature=args.temperature, top_p=args.top_p,
-        multipv=args.multipv, seed=args.seed,
+        multipv=args.multipv, seed=args.seed, threads=args.threads,
     )
     engine.run()
 

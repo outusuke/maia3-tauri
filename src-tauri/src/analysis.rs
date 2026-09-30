@@ -78,7 +78,7 @@ impl Default for AnalysisConfig {
 /// Stand-in magnitude so mate scores compare sensibly against centipawns.
 const MATE_CP_MAGNITUDE: i32 = 100_000;
 
-fn effective_cp(cp: Option<i32>, mate: Option<i32>) -> i32 {
+pub(crate) fn effective_cp(cp: Option<i32>, mate: Option<i32>) -> i32 {
     match mate {
         Some(m) if m > 0 => MATE_CP_MAGNITUDE - m,
         Some(m) => -MATE_CP_MAGNITUDE - m,
@@ -87,7 +87,7 @@ fn effective_cp(cp: Option<i32>, mate: Option<i32>) -> i32 {
 }
 
 // lichess's cp->winning-chances curve; saturates near the edges so a shuffle in a won endgame isn't a "blunder"
-fn winning_chances(effective_cp: i32) -> f64 {
+pub(crate) fn winning_chances(effective_cp: i32) -> f64 {
     2.0 / (1.0 + (-0.004 * effective_cp as f64).exp()) - 1.0
 }
 

@@ -44,4 +44,6 @@ Plain `cargo build --release`, no Tauri bundler — installs binary + `.desktop`
 
 ## attributions
 
-Move classification badges and brilliant move logic adapted from [WintrChess](https://github.com/WintrCat/wintrchess) (GPL-3.0),
+- Move classification badges and brilliant move logic adapted from [WintrChess](https://github.com/WintrCat/wintrchess) (GPL-3.0).
+- Human insights (Maia move probabilities per rating, move scoring, rating chart) adapted from [maia-platform-frontend](https://github.com/CSSLab/maia-platform-frontend) (CSSLab, GPL-3.0).
+- Maia models by [CSSLab](https://github.com/CSSLab/maia3).

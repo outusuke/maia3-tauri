@@ -4,6 +4,7 @@
 mod analysis;
 mod engine;
 mod game;
+mod insights;
 mod pgn;
 mod setup;
 
@@ -22,6 +23,8 @@ struct AppState {
     engine: Mutex<Option<Engine>>,
     /// Separate from `engine` so a running game and an analysis don't fight over one subprocess.
     stockfish: Mutex<Option<Engine>>,
+    /// Own Maia process so Analyze doesn't disturb a game in progress on the Play tab.
+    insights: Mutex<Option<Engine>>,
 }
 
 fn parse_promotion(p: Option<String>) -> Option<Piece> {
@@ -97,6 +100,61 @@ fn start_engine(
     eng.set_elo(elo)?;
     *slot = Some(eng);
     Ok(())
+}
+
+#[tauri::command(async)]
+fn start_insights_engine(
+    app: AppHandle,
+    state: State<AppState>,
+    command: String,
+) -> Result<(), String> {
+    let mut slot = state.insights.lock().map_err(|e| e.to_string())?;
+    if slot.is_some() {
+        return Ok(());
+    }
+    let (cmd, args) = setup::onnx_engine_command(&app, &command, vec!["--threads".into(), "2".into()])?;
+    *slot = Some(Engine::spawn(&cmd, &args)?);
+    Ok(())
+}
+
+#[tauri::command(async)]
+fn human_moves(
+    state: State<AppState>,
+    start_fen: String,
+    ucis: Vec<String>,
+    played: Option<String>,
+    ratings: Vec<u32>,
+    rating: u32,
+) -> Result<insights::HumanMoves, String> {
+    let mut slot = state.insights.lock().map_err(|e| e.to_string())?;
+    let maia = slot.as_mut().ok_or("Maia insights engine is not running")?;
+    insights::human_moves(maia, &start_fen, &ucis, played.as_deref(), &ratings, rating)
+}
+
+#[tauri::command(async)]
+fn maia_estimate(
+    state: State<AppState>,
+    start_fen: String,
+    ucis: Vec<String>,
+    plies: Vec<usize>,
+    ratings: Vec<u32>,
+) -> Result<Vec<engine::PlyLogProbs>, String> {
+    let mut slot = state.insights.lock().map_err(|e| e.to_string())?;
+    let maia = slot.as_mut().ok_or("Maia insights engine is not running")?;
+    maia.maia_estimate(&start_fen, &ucis, &plies, &ratings, std::time::Duration::from_secs(120))
+}
+
+#[tauri::command(async)]
+fn score_human_moves(
+    state: State<AppState>,
+    start_fen: String,
+    ucis: Vec<String>,
+    moves: Vec<String>,
+    depth: Option<u32>,
+) -> Result<insights::MoveScores, String> {
+    let mut slot = state.stockfish.lock().map_err(|e| e.to_string())?;
+    let sf = slot.as_mut().ok_or("stockfish is not running")?;
+    insights::score_moves(sf, &start_fen, &ucis, &moves, depth.unwrap_or(10))
 }
 
 #[tauri::command]
@@ -299,6 +357,7 @@ fn main() {
             game: Mutex::new(Game::new()),
             engine: Mutex::new(None),
             stockfish: Mutex::new(None),
+            insights: Mutex::new(None),
         })
         .invoke_handler(tauri::generate_handler![
             new_game,
@@ -308,6 +367,10 @@ fn main() {
             undo_move,
             start_engine,
             stop_engine,
+            start_insights_engine,
+            human_moves,
+            score_human_moves,
+            maia_estimate,
             set_engine_elo,
             engine_move,
             engine_running,

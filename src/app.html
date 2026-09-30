@@ -237,6 +237,36 @@
           </div>
           <div id="analyzeMoveList"></div>
         </div>
+
+        <div class="panel" id="humanPanel" style="display:none;">
+          <h2>Human insights</h2>
+          <div class="inlineRow" style="justify-content:space-between;">
+            <label class="arrowToggle"><input type="checkbox" id="hiEnable"> Enable</label>
+            <select id="hiRating" title="Rating of the player Maia imitates"></select>
+          </div>
+          <div id="hiStatus" class="hint"></div>
+          <div id="hiBody" style="display:none;">
+            <div id="hiSummary"></div>
+            <div id="hiMeter"></div>
+            <div id="hiMeterLegend"></div>
+            <div id="hiMoves"></div>
+            <details id="hiChartBox">
+              <summary class="hiTitle">Moves by rating</summary>
+              <svg id="hiChart" viewBox="0 0 320 150"></svg>
+              <div id="hiChartLegend"></div>
+            </details>
+            <label class="arrowToggle" style="margin-top:8px;"><input type="checkbox" id="hiArrows" checked> <i class="hiSwatch"></i> Two likeliest human moves on board</label>
+          </div>
+
+          <h3 class="hiTitle">Rating estimate</h3>
+          <button class="small" id="hiEstimateBtn">Estimate from this game</button>
+          <div id="hiEstimateStatus" class="hint"></div>
+          <div id="hiEstimate" style="display:none;">
+            <div id="hiEstimateCards"></div>
+            <svg id="hiEstimateChart" viewBox="0 0 320 130"></svg>
+            <div id="hiEstimateLegend"></div>
+          </div>
+        </div>
       </aside>
     </div>
     </main>

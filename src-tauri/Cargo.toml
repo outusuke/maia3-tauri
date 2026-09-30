@@ -3,6 +3,7 @@ name = "maia-chess"
 version = "0.1.0"
 description = "A simple Lichess-style chess GUI that plays against the Maia-3 human-like engine"
 authors = ["you"]
+license = "GPL-3.0-only"
 edition = "2021"
 rust-version = "1.77"
 
