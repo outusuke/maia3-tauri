@@ -2,7 +2,7 @@
 <component type="desktop-application">
   <id>dev.maiachess.MaiaChess</id>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT</project_license>
+  <project_license>GPL-3.0-only</project_license>
   <name>Maia Chess</name>
   <summary>Play chess against the human-like Maia-3 engine</summary>
   <description>

@@ -1336,6 +1336,7 @@ let stockfishStarted = false;
 let variation = null;
 
 // ---- Human insights (Maia move probabilities per rating) ----
+// Adapted from CSSLab/maia-platform-frontend (GPL-3.0).
 const HI_CHART_RATINGS = Array.from({ length: 11 }, (_, i) => 600 + i * 200);
 const HI_LINE_COLORS = ["#4caf6b", "#3b6ef2", "#e68f00", "#c06be0", "#26c2c2"];
 const HI_CLASS_COLORS = { good: "#4caf6b", ok: "#e3c96b", blunder: "#e05555" };
