@@ -1483,6 +1483,7 @@ function hiArrowsAt(ply) {
 }
 
 function hiRedrawBoard() {
+  if (puzzleMode) return;
   hiRedrawing = true;
   try { renderAnalyzeBoard(); } finally { hiRedrawing = false; }
 }
@@ -1513,13 +1514,13 @@ async function hiRefresh() {
     if (token === hiToken) hi.status.textContent = "Insights failed: " + err;
     return;
   }
-  if (token !== hiToken) return;
+  if (token !== hiToken || puzzleMode) return;
 
   hi.status.textContent = "";
   hiRender(ply, rating);
   hiRedrawBoard();
 
-  const rerender = () => { if (token === hiToken) hiRender(ply, rating); };
+  const rerender = () => { if (token === hiToken && !puzzleMode) hiRender(ply, rating); };
   hiFetchScores(ply, rating, moves).then(rerender, (err) => {
     if (token === hiToken) hi.status.textContent = "Scoring failed: " + err;
   });
@@ -2615,6 +2616,10 @@ function enterPuzzleMode() {
   puzzleMode = true;
   variation = null;
   az.variationBar.style.display = "none";
+  // A refresh still running from the analysis view would repaint the board over the puzzle.
+  hiToken++;
+  hi.body.style.display = "none";
+  hi.status.textContent = "";
   puzzleIndex = 0;
   puzzleSolved = 0;
   az.puzzlePanel.classList.add("show");
@@ -2659,6 +2664,7 @@ function renderPuzzleBoard(flip) {
       arrows = hiArrowsFrom(hiData.get(`moves:${analysis.indexOf(puzzle)}:${hiRating()}`)).concat(arrows);
     }
   }
+  syncPuzzleNav();
   renderMaterialBars(az.materialTop, az.materialBottom, fen, flip);
   renderChessBoard(az.board, fen, {
     flipped: flip,
@@ -2763,10 +2769,46 @@ function fillPuzzleFeedback(prefix, puzzle) {
       renderPuzzleBoard(sideToMove(puzzleFen) === "black");
     });
     line.appendChild(moves);
-  } else {
-    line.appendChild(document.createTextNode(" " + puzzle.bestLineSan.join(" ")));
+    box.appendChild(line);
+    box.appendChild(buildPuzzleNav());
+    syncPuzzleNav();
+    return;
   }
+  line.appendChild(document.createTextNode(" " + puzzle.bestLineSan.join(" ")));
   box.appendChild(line);
+}
+
+function buildPuzzleNav() {
+  const nav = document.createElement("div");
+  nav.className = "navBtns puzzleNav";
+  const buttons = [
+    ["start", "|\u00ab", "First move (Home)"],
+    ["prev", "\u00ab", "Previous move (\u2190)"],
+    ["next", "\u00bb", "Next move (\u2192)"],
+    ["end", "\u00bb|", "End of line (End)"],
+  ];
+  for (const [where, label, title] of buttons) {
+    const btn = document.createElement("button");
+    btn.className = "navBtn";
+    btn.dataset.nav = where;
+    btn.textContent = label;
+    btn.title = title;
+    btn.addEventListener("click", () => goPuzzleLine(where));
+    nav.appendChild(btn);
+  }
+  return nav;
+}
+
+function syncPuzzleNav() {
+  const puzzle = puzzles[puzzleIndex];
+  const nav = az.puzzleFeedback.querySelector(".puzzleNav");
+  if (!nav || !puzzle || !hasClickableLine(puzzle)) return;
+  const atStart = puzzleViewIdx === 0;
+  const atEnd = puzzleViewIdx >= puzzle.bestLineUci.length;
+  nav.querySelector('[data-nav="start"]').disabled = atStart;
+  nav.querySelector('[data-nav="prev"]').disabled = atStart;
+  nav.querySelector('[data-nav="next"]').disabled = atEnd;
+  nav.querySelector('[data-nav="end"]').disabled = atEnd;
 }
 
 // same as azGo(), but for the solution line shown once a puzzle is solved/revealed
