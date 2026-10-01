@@ -162,7 +162,7 @@ def clamp_multipv(value):
 
 
 class Maia3ONNXEngine:
-    def __init__(self, onnx_path, history, use_uci_history, elo, temperature, top_p, multipv, seed, threads=4):
+    def __init__(self, onnx_path, history, use_uci_history, elo, temperature, top_p, multipv, seed, threads=2):
         self.history_len = history
         self.use_uci_history = use_uci_history
         self.self_elo = elo
@@ -179,6 +179,9 @@ class Maia3ONNXEngine:
         so = ort.SessionOptions()
         # Keep intra-op threads modest; a dual-core box has no headroom for contention.
         so.intra_op_num_threads = threads
+        # the arena never shrinks and was sitting near 1 GB after big estimate batches
+        so.enable_cpu_mem_arena = False
+        so.enable_mem_pattern = False
         self.session = ort.InferenceSession(onnx_path, sess_options=so,
                                              providers=["CPUExecutionProvider"])
 
@@ -341,7 +344,7 @@ class Maia3ONNXEngine:
         n = len(elos)
         elo_arr = np.array(elos, dtype=np.float32)
         out = []
-        per_run = max(1, 256 // n)
+        per_run = max(1, 64 // n)
         for start in range(0, len(entries), per_run):
             chunk = entries[start:start + per_run]
             tokens = np.repeat(np.stack([e[1] for e in chunk]), n, axis=0)
@@ -511,7 +514,7 @@ def main():
                     help="RNG seed for temperature sampling. Omit for a fresh, "
                          "OS-entropy seed each run; pass a value to reproduce a "
                          "specific game.")
-    p.add_argument("--threads", type=int, default=4)
+    p.add_argument("--threads", type=int, default=2)
     args = p.parse_args()
 
     engine = Maia3ONNXEngine(

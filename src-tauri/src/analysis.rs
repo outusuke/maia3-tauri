@@ -243,7 +243,7 @@ pub fn analyze_game(
 }
 
 /// (SAN, UCI, FEN after) per move; stops early if the PV goes illegal, which can happen right at mate.
-fn sanify_line(start: &Board, ucis: &[String]) -> (Vec<String>, Vec<String>, Vec<String>) {
+pub(crate) fn sanify_line(start: &Board, ucis: &[String]) -> (Vec<String>, Vec<String>, Vec<String>) {
     let mut board = start.clone();
     let mut sans = Vec::new();
     let mut moves = Vec::new();
