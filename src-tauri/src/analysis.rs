@@ -1,8 +1,8 @@
-use crate::brilliant::{is_brilliant, BrilliantInput};
+use crate::brilliant::{is_brilliant, BrilliantInput, Eval};
 use crate::engine::Engine;
 use crate::game::move_to_san;
 use crate::pgn::ParsedGame;
-use chess::{Board, ChessMove, Color};
+use chess::{Board, ChessMove, Color, MoveGen};
 use serde::Serialize;
 use std::str::FromStr;
 use std::time::Duration;
@@ -11,6 +11,8 @@ use std::time::Duration;
 #[serde(rename_all = "lowercase")]
 pub enum MoveGrade {
     Brilliant,
+    OnlyMove,
+    Best,
     Good,
     Inaccuracy,
     Mistake,
@@ -52,10 +54,10 @@ pub struct AnalysisConfig {
     pub blunder_wc: f64,
     pub acceptable_cp: i32,
     pub move_timeout: Duration,
-    /// No brilliant if the mover was already this far ahead (cp).
-    pub brilliant_max_eval_cp: i32,
-    /// No brilliant if the move leaves the mover below this (cp).
-    pub brilliant_min_eval_after_cp: i32,
+    // Max winning-chances loss for a non-top move to still count as Best.
+    pub best_loss_wc: f64,
+    // Min winning-chances gap to the second-best line for a top move to count as an only move.
+    pub only_move_gap_wc: f64,
 }
 
 impl Default for AnalysisConfig {
@@ -68,8 +70,8 @@ impl Default for AnalysisConfig {
             blunder_wc: 0.3,
             acceptable_cp: 20,
             move_timeout: Duration::from_secs(60),
-            brilliant_max_eval_cp: 300,
-            brilliant_min_eval_after_cp: 0,
+            best_loss_wc: 0.01,
+            only_move_gap_wc: 0.2,
         }
     }
 }
@@ -88,6 +90,13 @@ pub(crate) fn effective_cp(cp: Option<i32>, mate: Option<i32>) -> i32 {
 // lichess's cp->winning-chances curve; saturates near the edges so a shuffle in a won endgame isn't a "blunder"
 pub(crate) fn winning_chances(effective_cp: i32) -> f64 {
     2.0 / (1.0 + (-0.004 * effective_cp as f64).exp()) - 1.0
+}
+
+fn to_eval(cp: Option<i32>, mate: Option<i32>, sign: i32) -> Eval {
+    match mate {
+        Some(m) => Eval { mate: true, value: m * sign },
+        None => Eval { mate: false, value: cp.unwrap_or(0) * sign },
+    }
 }
 
 fn flip_if_black(value: i32, side_to_move: Color) -> i32 {
@@ -123,17 +132,19 @@ pub fn analyze_game(
         let board_after = board.make_move_new(mv);
         let played_is_best = best.pv.first().map(|m| m.as_str()) == Some(uci.as_str());
 
-        // Eval after the played move, from the mover's perspective so it compares with `best_effective`.
-        let played_effective = if played_is_best {
-            best_effective
+        // Scores from the mover's perspective; the after-move search reports the opponent's.
+        let (played_effective, played_eval) = if played_is_best {
+            (best_effective, to_eval(best.score_cp, best.mate, 1))
         } else {
             let after_fen = format!("{board_after}");
             let after_lines = engine.analyze(&after_fen, config.depth, 1, config.move_timeout)?;
             let after_best = after_lines
                 .first()
                 .ok_or("engine returned no line for the played move")?;
-            // Score is from the opponent's perspective now; negate.
-            -effective_cp(after_best.score_cp, after_best.mate)
+            (
+                -effective_cp(after_best.score_cp, after_best.mate),
+                to_eval(after_best.score_cp, after_best.mate, -1),
+            )
         };
 
         let loss = (winning_chances(best_effective) - winning_chances(played_effective)).max(0.0);
@@ -147,18 +158,34 @@ pub fn analyze_game(
             MoveGrade::Blunder
         };
 
-        if grade == MoveGrade::Good
-            && is_brilliant(&BrilliantInput {
-                before: &board,
-                after: &board_after,
-                mv,
-                mover: side_to_move,
-                eval_before_cp: best_effective,
-                eval_after_cp: played_effective,
-                max_eval_before_cp: config.brilliant_max_eval_cp,
-                min_eval_after_cp: config.brilliant_min_eval_after_cp,
-            })
+        let second = lines.iter().find(|l| l.multipv == 2);
+        let second_effective = second.map(|l| effective_cp(l.score_cp, l.mate));
+        let gap_wc = second_effective.map_or(0.0, |e| winning_chances(best_effective) - winning_chances(e));
+        // Same cutoff WintrChess uses for "already winning anyway".
+        let second_still_winning = second_effective.map_or(false, |e| e >= 700);
+        let already_mating = best.mate.map_or(false, |m| m > 0);
+
+        if played_is_best
+            && gap_wc >= config.only_move_gap_wc
+            && !second_still_winning
+            && !already_mating
+            && played_effective >= 0
+            && MoveGen::new_legal(&board).len() > 1
         {
+            grade = MoveGrade::OnlyMove;
+        } else if played_is_best || loss < config.best_loss_wc {
+            grade = MoveGrade::Best;
+        }
+
+        let second_eval = second.map(|l| to_eval(l.score_cp, l.mate, 1));
+        if is_brilliant(&BrilliantInput {
+            fen_before: &fen_before,
+            uci,
+            top_move_played: played_is_best,
+            prev_top: to_eval(best.score_cp, best.mate, 1),
+            prev_second: second_eval,
+            current: played_eval,
+        }) {
             grade = MoveGrade::Brilliant;
         }
 
