@@ -7,6 +7,8 @@ const STANDARD_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const GRADE_BADGE_ICON = {
   brilliant: "img/classifications/brilliant.png",
+  onlymove: "img/classifications/critical.png",
+  best: "img/classifications/best.png",
   good: "img/classifications/okay.png",
   inaccuracy: "img/classifications/inaccuracy.png",
   mistake: "img/classifications/mistake.png",
@@ -2178,7 +2180,7 @@ az.analyzeBtn.addEventListener("click", async () => {
 
 function gradeClass(grade) { return "grade-" + grade; }
 // no "better move" hint for either — both are already the top choice
-function isPositiveGrade(grade) { return grade === "good" || grade === "brilliant"; }
+function isPositiveGrade(grade) { return ["good", "best", "onlymove", "brilliant"].includes(grade); }
 
 function renderAnalyzeMoveList() {
   az.moveList.innerHTML = "";
@@ -2197,7 +2199,7 @@ function renderAnalyzeMoveList() {
     left.innerHTML = `<span class="gradeChip ${gradeClass(m.grade)}"></span>${label} ${m.san}`;
     const right = document.createElement("span");
     right.className = gradeClass(m.grade);
-    right.textContent = m.grade;
+    right.textContent = EVAL_GRADE_NAME[m.grade] ?? m.grade;
     row.appendChild(left);
     row.appendChild(right);
     row.addEventListener("click", () => azGoToPly(i + 1));
@@ -2302,10 +2304,10 @@ az.practiceSideSelect.addEventListener("change", () => {
 az.practiceBtn.addEventListener("click", enterPuzzleMode);
 
 // Eval graph: Y axis is win probability (Lichess curve); linear centipawns would flatten most games near zero.
-const EVAL_GRADE_COLORS = { brilliant: "#26c2c2", inaccuracy: "#e3c96b", mistake: "#f0a860", blunder: "#e05555" };
-const EVAL_GRADE_RADIUS = { brilliant: 5, inaccuracy: 3.5, mistake: 4.5, blunder: 5.5 };
-const EVAL_GRADE_MARK = { good: "", brilliant: "!!", inaccuracy: "?!", mistake: "?", blunder: "??" };
-const EVAL_GRADE_NAME = { good: "Good", brilliant: "Brilliant", inaccuracy: "Inaccuracy", mistake: "Mistake", blunder: "Blunder" };
+const EVAL_GRADE_COLORS = { brilliant: "#26c2c2", onlymove: "#5b9bd5", inaccuracy: "#e3c96b", mistake: "#f0a860", blunder: "#e05555" };
+const EVAL_GRADE_RADIUS = { brilliant: 5, onlymove: 4.5, inaccuracy: 3.5, mistake: 4.5, blunder: 5.5 };
+const EVAL_GRADE_MARK = { good: "", best: "", onlymove: "!", brilliant: "!!", inaccuracy: "?!", mistake: "?", blunder: "??" };
+const EVAL_GRADE_NAME = { good: "Good", best: "Best", onlymove: "Only move", brilliant: "Brilliant", inaccuracy: "Inaccuracy", mistake: "Mistake", blunder: "Blunder" };
 let evalHoverPly = null;
 let evalDragging = false;
 let evalGeom = null;       // { left, plotW, n } from the last draw, for hit-testing
@@ -2533,8 +2535,9 @@ function renderEvalInfo(ply) {
 
 function renderEvalLegend() {
   az.evalLegend.textContent = "";
-  const GRADE_NOUN_PLURAL = { brilliant: "brilliant moves", inaccuracy: "inaccuracies", mistake: "mistakes", blunder: "blunders" };
-  for (const g of ["brilliant", "inaccuracy", "mistake", "blunder"]) {
+  const GRADE_NOUN_PLURAL = { brilliant: "brilliant moves", onlymove: "only moves", inaccuracy: "inaccuracies", mistake: "mistakes", blunder: "blunders" };
+  const GRADE_NOUN_SINGULAR = { brilliant: "brilliant move", onlymove: "only move", inaccuracy: "inaccuracy", mistake: "mistake", blunder: "blunder" };
+  for (const g of ["brilliant", "onlymove", "inaccuracy", "mistake", "blunder"]) {
     const matches = gradeMatches(g);
     const item = document.createElement("button");
     item.type = "button";
@@ -2545,9 +2548,9 @@ function renderEvalLegend() {
     dot.className = "evalLegendDot";
     dot.style.background = EVAL_GRADE_COLORS[g];
     item.appendChild(dot);
-    const noun = matches.length === 1 ? (g === "brilliant" ? "brilliant move" : g) : GRADE_NOUN_PLURAL[g];
+    const noun = matches.length === 1 ? GRADE_NOUN_SINGULAR[g] : GRADE_NOUN_PLURAL[g];
     item.appendChild(document.createTextNode(`${matches.length} ${noun}`));
-    item.title = matches.length ? `Jump to the next ${g}` : "";
+    item.title = matches.length ? `Jump to the next ${EVAL_GRADE_NAME[g].toLowerCase()}` : "";
     item.addEventListener("click", () => jumpToGrade(g));
     az.evalLegend.appendChild(item);
   }

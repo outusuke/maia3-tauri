@@ -456,12 +456,16 @@ button.small:disabled { opacity: 0.5; cursor: default; }
 #analyzeMoveList .aMove.current { outline: 1px solid var(--accent); }
 #analyzeMoveList .aMove .grade { font-size: 11px; padding: 1px 6px; border-radius: 10px; }
 .grade-good { color: #8fe89b; }
+.grade-best { color: #6fdc8c; }
+.grade-onlymove { color: #7db7e8; }
 .grade-brilliant { color: #26c2c2; }
 .grade-inaccuracy { color: #e3c96b; }
 .grade-mistake { color: #f0a860; }
 .grade-blunder { color: #ff8a8a; }
 .gradeChip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
 .gradeChip.grade-good { background: #4caf6b; }
+.gradeChip.grade-best { background: #3fbf6a; }
+.gradeChip.grade-onlymove { background: #5b9bd5; }
 .gradeChip.grade-brilliant { background: #26c2c2; }
 .gradeChip.grade-inaccuracy { background: #e3c96b; }
 .gradeChip.grade-mistake { background: #f0a860; }
