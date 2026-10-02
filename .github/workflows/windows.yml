@@ -5,6 +5,8 @@ on:
     tags:
       - 'v*'
       - '*.*.*'
+  release:
+    types: [published]
 jobs:
   build-windows:
     name: "Build Windows installer"
