@@ -442,7 +442,10 @@ fn main() {
                     .unwrap_or(false);
                 if idle {
                     if let Ok(mut slot) = state.insights.try_lock() {
-                        *slot = None;
+                        if slot.is_some() {
+                            eprintln!("[insights] idle, shutting down");
+                            *slot = None;
+                        }
                     }
                 }
             });
