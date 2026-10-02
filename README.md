@@ -26,6 +26,7 @@ No bundled weights. Gear icon → setup screen:
 - Rust (stable) + Tauri CLI: `cargo install tauri-cli`
 - Python 3 (ONNX export or `maia3` pip path)
 - `flatpak-builder` (for the Flatpak build)
+- Windows only: Visual Studio Build Tools with the C++ workload (WebView2 ships with Windows 11)
 
 ## run
 
@@ -40,6 +41,8 @@ flatpak-builder --user --install --force-clean build-dir dev.maiachess.MaiaChess
 ```
 
 Plain `cargo build --release`, no Tauri bundler — installs binary + `.desktop` + metainfo by hand. CI runs this on tag push. `cargo tauri build` works too, for a local AppImage/deb.
+
+On Windows, `cargo tauri build --bundles nsis` produces an installer under `src-tauri/target/release/bundle/nsis/`. CI builds it too. Stockfish is auto-downloaded there too (setup screen → Install Stockfish), or put your own on PATH / set `STOCKFISH_PATH`.
 
 
 ## attributions
