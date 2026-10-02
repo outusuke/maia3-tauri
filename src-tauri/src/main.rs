@@ -53,6 +53,15 @@ fn insights_slot<'a>(
     Ok(slot)
 }
 
+/// A finished game has no more use for the Maia process, so release it right away.
+fn release_engine_if_over(state: &AppState, gs: &GameState) {
+    if gs.status != "ongoing" {
+        if let Ok(mut slot) = state.engine.lock() {
+            *slot = None;
+        }
+    }
+}
+
 fn parse_promotion(p: Option<String>) -> Option<Piece> {
     match p.as_deref() {
         Some("q") => Some(Piece::Queen),
@@ -96,9 +105,13 @@ fn make_move(
     let from_sq = Square::from_str(&from).map_err(|e| e.to_string())?;
     let to_sq = Square::from_str(&to).map_err(|e| e.to_string())?;
     let promo = parse_promotion(promotion);
-    let mut game = state.game.lock().map_err(|e| e.to_string())?;
-    game.try_move(from_sq, to_sq, promo)?;
-    Ok(game.state())
+    let gs = {
+        let mut game = state.game.lock().map_err(|e| e.to_string())?;
+        game.try_move(from_sq, to_sq, promo)?;
+        game.state()
+    };
+    release_engine_if_over(&state, &gs);
+    Ok(gs)
 }
 
 // (async) moves slow commands off the UI thread; a plain sync command freezes the window until it returns.
@@ -211,9 +224,13 @@ fn engine_move(state: State<AppState>) -> Result<GameState, String> {
         eng.best_move(&start_fen, &moves, Duration::from_secs(30))?
     };
 
-    let mut game = state.game.lock().map_err(|e| e.to_string())?;
-    game.try_move_uci(&uci_move)?;
-    Ok(game.state())
+    let gs = {
+        let mut game = state.game.lock().map_err(|e| e.to_string())?;
+        game.try_move_uci(&uci_move)?;
+        game.state()
+    };
+    release_engine_if_over(&state, &gs);
+    Ok(gs)
 }
 
 #[tauri::command]
@@ -484,6 +501,15 @@ fn main() {
             remove_onnx_model,
             remove_stockfish,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Maia Chess");
+        .build(tauri::generate_context!())
+        .expect("error while building Maia Chess")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                let state = app.state::<AppState>();
+                // Dropping an Engine sends `quit` and kills the child.
+                if let Ok(mut s) = state.engine.lock() { *s = None; }
+                if let Ok(mut s) = state.stockfish.lock() { *s = None; }
+                if let Ok(mut s) = state.insights.lock() { *s = None; }
+            }
+        });
 }
