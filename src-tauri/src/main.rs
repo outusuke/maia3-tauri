@@ -507,9 +507,9 @@ fn main() {
             if let tauri::RunEvent::Exit = event {
                 let state = app.state::<AppState>();
                 // Dropping an Engine sends `quit` and kills the child.
-                if let Ok(mut s) = state.engine.lock() { *s = None; }
-                if let Ok(mut s) = state.stockfish.lock() { *s = None; }
-                if let Ok(mut s) = state.insights.lock() { *s = None; }
+                if let Ok(mut s) = state.engine.lock() { *s = None; };
+                if let Ok(mut s) = state.stockfish.lock() { *s = None; };
+                if let Ok(mut s) = state.insights.lock() { *s = None; };
             }
         });
 }
