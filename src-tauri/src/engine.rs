@@ -84,10 +84,11 @@ impl Engine {
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::inherit())
             .spawn()
             .map_err(|e| format!("failed to launch '{command}': {e}"))?;
 
+        eprintln!("[engine] started pid {}: {command}", child.id());
         let stdin = child.stdin.take().ok_or("no stdin handle")?;
         let stdout = child.stdout.take().ok_or("no stdout handle")?;
 
@@ -302,6 +303,7 @@ pub struct MaiaInsights {
 
 impl Drop for Engine {
     fn drop(&mut self) {
+        eprintln!("[engine] stopping pid {}", self.child.id());
         let _ = self.send("quit");
         std::thread::sleep(Duration::from_millis(50));
         let _ = self.child.kill();

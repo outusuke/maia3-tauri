@@ -263,7 +263,7 @@ pub fn setup_status(app: AppHandle) -> SetupStatus {
         .collect();
     SetupStatus {
         engine_ready: any_on_path(MAIA_CANDIDATES),
-        onnx_runtime_ready: onnx_venv_python(&app).is_file(),
+        onnx_runtime_ready: onnx_venv_works(&app),
         onnx_models_ready,
         onnx_model_bytes,
         stockfish_ready: stockfish_path.is_some(),
@@ -852,13 +852,29 @@ fn onnx_uci_script(app: &AppHandle) -> Result<PathBuf, String> {
     resolve_resource(app, "maia3_onnx_uci.py")
 }
 
+// a venv built under another runtime's python (e.g. after a Flatpak runtime bump) keeps its python3 but loses its site-packages
+fn onnx_venv_works(app: &AppHandle) -> bool {
+    let python = onnx_venv_python(app);
+    python.is_file()
+        && Command::new(&python)
+            .args([
+                "-c",
+                "import importlib.util as u,sys; sys.exit(0 if all(u.find_spec(m) for m in ('chess','numpy','onnxruntime')) else 1)",
+            ])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+}
+
 pub fn onnx_engine_command(
     app: &AppHandle,
     model: &str,
     mut extra_args: Vec<String>,
 ) -> Result<(String, Vec<String>), String> {
     let python = onnx_venv_python(app);
-    if !python.is_file() {
+    if !onnx_venv_works(app) {
         return Err(
             "the ONNX Runtime environment isn't set up yet - run ONNX setup first".into(),
         );
@@ -922,7 +938,6 @@ fn run_onnx_setup_impl(app: &AppHandle, model: &str, progress: &mut Progress) ->
     std::fs::create_dir_all(&models_dir).map_err(|e| e.to_string())?;
     let onnx_path = onnx_model_path(app, model)?;
     let runtime_venv = onnx_runtime_venv_dir(app)?;
-    let runtime_python = venv_python(&runtime_venv);
 
     if onnx_path.is_file() {
         emit_log(app, format!("ONNX model {model}: already exported, skipping."));
@@ -1023,10 +1038,11 @@ fn run_onnx_setup_impl(app: &AppHandle, model: &str, progress: &mut Progress) ->
         prune_hf_cache(app);
     }
 
-    if runtime_python.is_file() {
+    if onnx_venv_works(app) {
         emit_log(app, "ONNX runtime venv: already set up, skipping.");
     } else {
         emit_log(app, "==> Setting up the ONNX Runtime venv (no torch here)...");
+        let _ = std::fs::remove_dir_all(&runtime_venv);
         let python3 = find_python()
             .ok_or("Python 3 wasn't found - install python3 (with the venv module) and try again")?;
         let python3_str = python3.to_string_lossy().to_string();
@@ -1054,7 +1070,7 @@ fn run_onnx_setup_impl(app: &AppHandle, model: &str, progress: &mut Progress) ->
 /// Only steps that will actually run are laid out, so skipped ones don't show up as phantom steps.
 pub fn run_onnx_setup(app: &AppHandle, model: &str) -> Result<(), String> {
     let need_export = onnx_model_path(app, model).map(|p| !p.is_file()).unwrap_or(true);
-    let need_runtime = !onnx_venv_python(app).is_file();
+    let need_runtime = !onnx_venv_works(app);
 
     let mut plan: Vec<(String, f32)> = Vec::new();
     if need_export {
