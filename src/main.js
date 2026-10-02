@@ -20,6 +20,12 @@ function pieceImageSrc(piece) {
   return `img/chesspieces/wikipedia/${color}${piece.toUpperCase()}.png`;
 }
 
+for (const p of "KQRBNPkqrbnp") {
+  const img = new Image();
+  img.src = pieceImageSrc(p);
+  if (img.decode) img.decode().catch(() => {});
+}
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 function svgEl(name, attrs, parent) {
   const e = document.createElementNS(SVG_NS, name);
@@ -357,6 +363,9 @@ function materialInfo(fen) {
 }
 
 function renderMaterialSide(el, pieces, lead) {
+  const key = pieces.join("") + "|" + lead;
+  if (el._materialKey === key) return;
+  el._materialKey = key;
   el.textContent = "";
   if (pieces.length === 0 && !lead) return;
   const group = document.createElement("span");
@@ -412,60 +421,14 @@ function onSquarePointerDown(e, boardEl, sq, piece, opts) {
   });
 }
 
-// Rebuilds the whole board DOM on every call; cheap at this size.
-function renderChessBoard(el, fen, opts) {
-  opts = opts || {};
+function buildBoardSquares(el, files, ranks) {
   el.innerHTML = "";
-  const board = fenToBoard(fen);
-  const flipped = !!opts.flipped;
-
-  el._flipped = flipped;
-  el._autoShapes = opts.arrows || [];
-  const placement = fen.split(" ")[0];
-  if (!el._user || el._user.placement !== placement) el._user = { placement, shapes: [] };
-  installBoardHandlers(el, opts.userArrows !== false);
-
-  const files = flipped ? [...FILES].reverse() : FILES;
-  const ranks = flipped ? RANKS : [...RANKS].reverse();
-
+  el._squares = {};
   for (const rank of ranks) {
     for (const file of files) {
       const sq = file + rank;
       const div = document.createElement("div");
-      div.className = `square ${squareColor(file, rank)}`;
       div.dataset.square = sq;
-
-      if (opts.selected === sq) div.classList.add("selected");
-      if (opts.lastMove && (opts.lastMove[0] === sq || opts.lastMove[1] === sq)) {
-        div.classList.add("last-move");
-      }
-      if (opts.checkSquare && sq === opts.checkSquare) {
-        div.classList.add("in-check");
-      }
-      if (opts.legalTargets && opts.legalTargets.includes(sq)) {
-        div.classList.add("move-dot");
-        if (board[sq]) div.classList.add("capture");
-      }
-
-      const piece = board[sq];
-      if (piece) {
-        const img = document.createElement("img");
-        img.className = "piece";
-        img.src = pieceImageSrc(piece);
-        img.alt = piece;
-        img.draggable = false;
-        img.decoding = "sync";
-        div.appendChild(img);
-      }
-
-      if (opts.badge && opts.badge.square === sq && GRADE_BADGE_ICON[opts.badge.grade]) {
-        const badge = document.createElement("img");
-        badge.className = `moveBadge ${gradeClass(opts.badge.grade)}`;
-        badge.src = GRADE_BADGE_ICON[opts.badge.grade];
-        badge.alt = opts.badge.grade;
-        div.appendChild(badge);
-      }
-
       if (file === files[0]) {
         const rc = document.createElement("span");
         rc.className = "coord rank";
@@ -478,12 +441,85 @@ function renderChessBoard(el, fen, opts) {
         fc.textContent = file;
         div.appendChild(fc);
       }
+      div.addEventListener("pointerdown", (e) => {
+        if (el._opts && el._opts.interactive) onSquarePointerDown(e, el, sq, el._board[sq], el._opts);
+      });
+      el.appendChild(div);
+      el._squares[sq] = div;
+    }
+  }
+}
 
-      if (opts.interactive) {
-        div.addEventListener("pointerdown", (e) => onSquarePointerDown(e, el, sq, piece, opts));
+// squares and piece images are reused between calls so redundant redraws don't flash
+function renderChessBoard(el, fen, opts) {
+  opts = opts || {};
+  const board = fenToBoard(fen);
+  const flipped = !!opts.flipped;
+
+  el._flipped = flipped;
+  el._autoShapes = opts.arrows || [];
+  el._opts = opts;
+  el._board = board;
+  const placement = fen.split(" ")[0];
+  if (!el._user || el._user.placement !== placement) el._user = { placement, shapes: [] };
+  installBoardHandlers(el, opts.userArrows !== false);
+
+  const files = flipped ? [...FILES].reverse() : FILES;
+  const ranks = flipped ? RANKS : [...RANKS].reverse();
+  if (el._layout !== flipped) {
+    buildBoardSquares(el, files, ranks);
+    el._layout = flipped;
+  }
+
+  for (const rank of ranks) {
+    for (const file of files) {
+      const sq = file + rank;
+      const div = el._squares[sq];
+
+      let cls = `square ${squareColor(file, rank)}`;
+      if (opts.selected === sq) cls += " selected";
+      if (opts.lastMove && (opts.lastMove[0] === sq || opts.lastMove[1] === sq)) cls += " last-move";
+      if (opts.checkSquare && sq === opts.checkSquare) cls += " in-check";
+      const piece = board[sq];
+      if (opts.legalTargets && opts.legalTargets.includes(sq)) {
+        cls += " move-dot";
+        if (piece) cls += " capture";
+      }
+      div.className = cls;
+
+      if (piece) {
+        if (!div._img) {
+          const img = document.createElement("img");
+          img.className = "piece";
+          img.draggable = false;
+          img.decoding = "sync";
+          div.insertBefore(img, div.firstChild);
+          div._img = img;
+        }
+        if (div._piece !== piece) {
+          div._img.src = pieceImageSrc(piece);
+          div._img.alt = piece;
+          div._piece = piece;
+        }
+      } else if (div._img) {
+        div._img.remove();
+        div._img = null;
+        div._piece = null;
       }
 
-      el.appendChild(div);
+      const badgeIcon = opts.badge && opts.badge.square === sq && GRADE_BADGE_ICON[opts.badge.grade];
+      if (badgeIcon) {
+        if (!div._badge) {
+          div._badge = document.createElement("img");
+          div.appendChild(div._badge);
+        }
+        div._badge.className = `moveBadge ${gradeClass(opts.badge.grade)}`;
+        if (div._badge.getAttribute("src") !== badgeIcon) div._badge.src = badgeIcon;
+        div._badge.alt = opts.badge.grade;
+      } else if (div._badge) {
+        div._badge.remove();
+        div._badge = null;
+      }
     }
   }
 
@@ -1301,6 +1337,8 @@ const az = {
   moveList: document.getElementById("analyzeMoveList"),
   flaggedPanel: document.getElementById("flaggedPanel"),
   flaggedList: document.getElementById("flaggedList"),
+  flaggedHeading: document.getElementById("flaggedHeading"),
+  flaggedCount: document.getElementById("flaggedCount"),
   practiceSideRow: document.getElementById("practiceSideRow"),
   practiceSideSelect: document.getElementById("practiceSideSelect"),
   practiceBtn: document.getElementById("practiceBtn"),
@@ -1334,8 +1372,54 @@ let analysis = null;        // Vec<MoveAnalysis> from analyze_pgn/analyze_moves
 let azViewPly = 0;          // 0 = start position, i = after sans[i-1]
 let azFlipped = false;      // Analyze board orientation (true = Black at the bottom)
 let stockfishStarted = false;
-// engine-line preview opened from a clicked move: { ply, m, fens, ucis, idx }
+// Side line off the game: an engine line being previewed, or the user's own moves.
+// { ply, m, fens, ucis, idx, free?, sans? } — `free` lines can be branched by moving pieces.
 let variation = null;
+
+// ---- Live engine (Stockfish on whatever is on the Analyze board) ----
+const eng = {
+  enable: document.getElementById("engEnable"),
+  lines: document.getElementById("engLines"),
+  note: document.getElementById("engNote"),
+  body: document.getElementById("engBody"),
+  score: document.getElementById("engScore"),
+  barFill: document.getElementById("engBarFill"),
+  status: document.getElementById("engStatus"),
+  list: document.getElementById("engList"),
+  arrows: document.getElementById("engArrows"),
+};
+const ENG_DEBOUNCE_MS = 250;
+const ENG_DEPTH = 10;
+let engToken = 0;
+let engKey = null;     // position/settings the current search belongs to
+let engLive = null;    // { key, lines } latest result for the arrow and list
+let analyzingGame = false;
+const engCache = new Map();
+// Remainders of searched lines, so stepping along one shows something instantly.
+const engSeed = new Map();
+let analysisDepth = 0;
+
+function engSeedLine(startFen, line, depth) {
+  if (line.mate !== null && line.mate !== undefined) return;   // mate distances change along the line
+  const fens = [startFen].concat(line.fens || []);
+  for (let k = 0; k < line.ucis.length && depth - k >= 6; k++) {
+    const key = fenKey(fens[k]);
+    const have = engSeed.get(key);
+    if (have && have.depth >= depth - k) continue;
+    engSeed.set(key, {
+      depth: depth - k,
+      lines: [{
+        multipv: 1, depth: depth - k, scoreCp: line.scoreCp, mate: null,
+        sans: line.sans.slice(k), ucis: line.ucis.slice(k), fens: (line.fens || []).slice(k),
+      }],
+    });
+  }
+}
+
+// Free piece moves on the Analyze board.
+let azSelected = null;
+let azTargets = [];
+let azSelFen = null;
 
 // ---- Human insights (Maia move probabilities per rating) ----
 // Adapted from CSSLab/maia-platform-frontend (GPL-3.0).
@@ -1891,21 +1975,47 @@ function azBadgeAt(ply) {
   return sq ? { square: sq, grade: m.grade } : null;
 }
 
+function fenKey(fen) { return fen.split(" ").slice(0, 4).join(" "); }
+
+// Blue for the engine; purple belongs to the human-insight arrows.
+const ENG_ARROW_OPACITY = [0.85, 0.55, 0.35];
+function engineArrow(fen) {
+  if (!eng.enable.checked || !eng.arrows.checked || !az.arrowToggle.checked) return [];
+  if (puzzleMode && !puzzleLocked) return [];
+  if (!engLive || engLive.key !== fenKey(fen)) return [];
+  const out = [];
+  engLive.lines.forEach((line, i) => {
+    const sq = uciToSquares(line.ucis && line.ucis[0]);
+    if (sq && !out.some((x) => x.from === sq[0] && x.to === sq[1])) {
+      out.push({ from: sq[0], to: sq[1], brush: "blue", opacity: ENG_ARROW_OPACITY[i] ?? 0.3 });
+    }
+  });
+  return out;
+}
+
 function analyzeView() {
   if (variation) {
     // idx 0 previews the first move; after that the arrow marks the move just played
     const sq = uciToSquares(variation.idx > 0 ? variation.ucis[variation.idx - 1] : variation.ucis[0]);
+    const fen = variation.fens[variation.idx];
     return {
-      fen: variation.fens[variation.idx],
+      fen,
       lastMove: variation.idx > 0 ? sq : null,
-      arrows: sq && az.arrowToggle.checked ? [{ from: sq[0], to: sq[1], brush: "blue" }] : [],
+      arrows: variation.free
+        ? engineArrow(fen)
+        : sq && az.arrowToggle.checked ? [{ from: sq[0], to: sq[1], brush: "blue" }] : [],
       badge: null,
     };
   }
+  const fen = azFenAt(azViewPly);
+  const arrows = analysisArrowsAt(azViewPly).concat(hiArrowsAt(azViewPly));
+  for (const a of engineArrow(fen)) {
+    if (!arrows.some((x) => x.from === a.from && x.to === a.to)) arrows.push(a);
+  }
   return {
-    fen: azFenAt(azViewPly),
+    fen,
     lastMove: azLastMoveAt(azViewPly),
-    arrows: analysisArrowsAt(azViewPly).concat(hiArrowsAt(azViewPly)),
+    arrows,
     badge: azBadgeAt(azViewPly),
   };
 }
@@ -1913,12 +2023,29 @@ function analyzeView() {
 function renderAnalyzeBoard() {
   const view = analyzeView();
   renderMaterialBars(az.materialTop, az.materialBottom, view.fen, azFlipped);
+  if (azSelFen !== view.fen) { azSelected = null; azTargets = []; }
+  const mover = sideToMove(view.fen);
   renderChessBoard(az.board, view.fen, {
-    interactive: false,
+    interactive: true,
     flipped: azFlipped,
     lastMove: view.lastMove,
     arrows: view.arrows,
     badge: view.badge,
+    selected: azSelected,
+    legalTargets: azTargets,
+    canDrag: (piece) => isPieceOfColor(piece, mover),
+    onGrab: onAzSquareClick,
+    onSquareClick: onAzSquareClick,
+    onDeselect: () => { azSelected = null; azTargets = []; renderAnalyzeBoard(); },
+    onDropMove: (from, to) => {
+      if (azSelected === from && azTargets.length > 0 && !azTargets.includes(to)) {
+        renderAnalyzeBoard();
+        return;
+      }
+      azSelected = null;
+      azTargets = [];
+      attemptAzMove(from, to);
+    },
   });
 
   let atStart, atEnd;
@@ -1939,6 +2066,7 @@ function renderAnalyzeBoard() {
   highlightCurrentMove();
   drawEvalGraph();
   hiRefresh();
+  engRefresh();
 }
 
 function azGo(where) {
@@ -1967,6 +2095,258 @@ function azGoToPly(ply) {
   azViewPly = ply;
   renderAnalyzeBoard();
 }
+
+async function onAzSquareClick(sq) {
+  if (puzzleMode) return;
+  const fen = analyzeView().fen;
+  const mover = sideToMove(fen);
+  const isOwn = isPieceOfColor(fenToBoard(fen)[sq], mover);
+
+  if (azSelected && azTargets.includes(sq)) {
+    const from = azSelected;
+    azSelected = null;
+    azTargets = [];
+    await attemptAzMove(from, sq);
+    return;
+  }
+  if (isOwn) {
+    if (azSelected === sq) return;
+    azSelected = sq;
+    azTargets = [];
+    azSelFen = fen;
+    renderAnalyzeBoard();
+    let targets = [];
+    try { targets = await invoke("scratch_legal_targets", { fen, square: sq }); } catch { targets = []; }
+    if (azSelected !== sq || analyzeView().fen !== fen) return;
+    azTargets = targets;
+    renderAnalyzeBoard();
+    return;
+  }
+  azSelected = null;
+  azTargets = [];
+  renderAnalyzeBoard();
+}
+
+async function attemptAzMove(from, to) {
+  const fen = analyzeView().fen;
+  let promotion = null;
+  if (needsPromotionMove(fen, from, to)) {
+    promotion = await askPromotion(az.promo, sideToMove(fen) === "white" ? "w" : "b");
+    if (!promotion) { renderAnalyzeBoard(); return; }
+  }
+  let result;
+  try {
+    result = await invoke("scratch_try_move", { fen, from, to, promotion });
+  } catch {
+    renderAnalyzeBoard();
+    return;
+  }
+  if (analyzeView().fen !== fen) return;
+  playFreeMove(fen, result);
+}
+
+function setFreeVariation(v) {
+  v.free = true;
+  v.ply = -1;
+  v.m = { fenBefore: v.fens[0], bestLineSan: v.sans };
+  variation = v;
+  az.variationTitle.textContent = "Your line — move a piece to branch off";
+  renderLineChips(az.variationLine, v.m, (n) => { v.idx = n; renderAnalyzeBoard(); });
+  renderAnalyzeBoard();
+}
+
+function playFreeMove(fen, mv) {
+  let v;
+  if (!variation) {
+    v = { fens: [fen], ucis: [], sans: [], idx: 0 };
+  } else {
+    // an engine-line preview becomes the user's own line from the current point
+    const sans = variation.sans || (variation.m && variation.m.bestLineSan) || [];
+    v = {
+      fens: variation.fens.slice(0, variation.idx + 1),
+      ucis: variation.ucis.slice(0, variation.idx),
+      sans: sans.slice(0, variation.idx),
+      idx: variation.idx,
+    };
+    // playing the move already on the board just steps forward
+    if (variation.ucis[variation.idx] === mv.uci) {
+      v = { fens: variation.fens.slice(), ucis: variation.ucis.slice(), sans: sans.slice(), idx: variation.idx + 1 };
+      setFreeVariation(v);
+      return;
+    }
+  }
+  v.fens.push(mv.fen);
+  v.ucis.push(mv.uci);
+  v.sans.push(mv.san);
+  v.idx = v.fens.length - 1;
+  setFreeVariation(v);
+}
+
+function startEngineLine(fen, line, n) {
+  setFreeVariation({ fens: [fen].concat(line.fens), ucis: line.ucis.slice(), sans: line.sans.slice(), idx: n });
+}
+
+function formatEngineEval(line) {
+  if (line.mate !== null && line.mate !== undefined) return line.mate === 0 ? "#" : `#${line.mate}`;
+  const pawns = (line.scoreCp || 0) / 100;
+  return (pawns > 0 ? "+" : "") + pawns.toFixed(2);
+}
+
+function engineSideAhead(line) {
+  if (line.mate !== null && line.mate !== undefined) return line.mate >= 0 ? "white" : "black";
+  return (line.scoreCp || 0) >= 0 ? "white" : "black";
+}
+
+// Share of the bar given to White, using the same curve as the grading.
+function engineWhiteShare(line) {
+  if (line.mate !== null && line.mate !== undefined) return line.mate >= 0 ? 100 : 0;
+  return 100 / (1 + Math.exp(-0.004 * (line.scoreCp || 0)));
+}
+
+// The position the board is showing right now, in analysis or practice mode.
+function engPosition() {
+  if (!puzzleMode) return analyzeView().fen;
+  return puzzleCurFen();
+}
+
+function redrawBoardForEngine() {
+  if (puzzleMode) renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  else renderAnalyzeBoard();
+}
+
+function engMessage(text) {
+  eng.note.textContent = text;
+}
+
+function renderEngineLines(fen, lines) {
+  eng.list.textContent = "";
+  lines.forEach((line) => {
+    const row = document.createElement("div");
+    row.className = "engLine";
+    const chip = document.createElement("span");
+    chip.className = `engChip ${engineSideAhead(line)}`;
+    chip.textContent = formatEngineEval(line);
+    const moves = document.createElement("span");
+    moves.className = "lineMoves";
+    renderLineChips(moves, { fenBefore: fen, bestLineSan: line.sans }, (n) => {
+      if (puzzleMode) startPuzzleEngineLine(line, n);
+      else startEngineLine(fen, line, n);
+    });
+    row.appendChild(chip);
+    row.appendChild(moves);
+    eng.list.appendChild(row);
+  });
+
+  const top = lines[0];
+  eng.score.textContent = formatEngineEval(top);
+  eng.score.className = `engChip engScore ${engineSideAhead(top)}`;
+  eng.barFill.style.width = `${engineWhiteShare(top).toFixed(1)}%`;
+}
+
+function engSetStatus(depth, searching) {
+  eng.status.textContent = searching ? `depth ${depth}…` : `depth ${depth}`;
+  eng.body.classList.toggle("busy", searching);
+}
+
+async function engRefresh() {
+  if (!eng.enable.checked) {
+    engToken++;
+    engKey = null;
+    engLive = null;
+    eng.body.style.display = "none";
+    engMessage("");
+    return;
+  }
+  if (puzzleMode && !puzzleLocked) {
+    // keeps the answer hidden until the puzzle is solved or revealed
+    engToken++;
+    engKey = null;
+    engLive = null;
+    eng.body.style.display = "none";
+    engMessage("The engine unlocks once you solve the puzzle or reveal the answer.");
+    return;
+  }
+  if (analyzingGame) {
+    engToken++;
+    engKey = null;
+    engMessage("Waiting for the game analysis to finish…");
+    return;
+  }
+
+  const fen = engPosition();
+  const target = ENG_DEPTH;
+  const count = parseInt(eng.lines.value, 10);
+  const key = `${fenKey(fen)}|${target}|${count}`;
+  if (key === engKey) return;
+  engKey = key;
+  const token = ++engToken;
+
+  const cached = engCache.get(key);
+  if (cached) {
+    engLive = { key: fenKey(fen), lines: cached };
+    showEngineResult(fen, cached, target, target, token);
+    return;
+  }
+
+  const seed = engSeed.get(fenKey(fen));
+  if (seed && seed.depth >= target && seed.lines.length >= count) {
+    engCache.set(key, seed.lines);
+    engLive = { key: fenKey(fen), lines: seed.lines };
+    showEngineResult(fen, seed.lines, target, target, token);
+    return;
+  }
+  if (seed) {
+    engLive = { key: fenKey(fen), lines: seed.lines };
+    showEngineResult(fen, seed.lines, seed.depth, target, token);
+  } else if (eng.body.style.display === "none") engMessage("Thinking…");
+  else eng.body.classList.add("busy");
+  await new Promise((r) => setTimeout(r, ENG_DEBOUNCE_MS));
+  if (token !== engToken) return;
+
+  if (!(await ensureStockfish())) {
+    if (token === engToken) engMessage(az.analyzeStatus.textContent);
+    return;
+  }
+
+  const depths = target > 10 && !(seed && seed.depth >= 10) ? [10, target] : [target];
+  for (const depth of depths) {
+    if (token !== engToken) return;
+    let lines;
+    try {
+      lines = await invoke("engine_lines", { fen, depth, multipv: count });
+    } catch (err) {
+      if (token === engToken) {
+        eng.body.style.display = "none";
+        engMessage("Engine failed: " + err);
+      }
+      return;
+    }
+    if (token !== engToken) return;
+    engLive = { key: fenKey(fen), lines };
+    if (depth === target) engCache.set(key, lines);
+    lines.forEach((l) => engSeedLine(fen, l, depth));
+    showEngineResult(fen, lines, depth, target, token);
+  }
+}
+
+function showEngineResult(fen, lines, depth, target, token) {
+  if (token !== engToken) return;
+  if (!lines.length || !lines[0].ucis.length) {
+    eng.body.style.display = "none";
+    engMessage("No moves to analyze here — the game is over.");
+    return;
+  }
+  engMessage("");
+  eng.body.style.display = "block";
+  renderEngineLines(fen, lines);
+  engSetStatus(depth, depth < target);
+  // arrows depend on the result; the key guard stops this from restarting the search
+  redrawBoardForEngine();
+}
+
+eng.enable.addEventListener("change", () => { engKey = null; engRefresh(); if (!eng.enable.checked) redrawBoardForEngine(); });
+eng.lines.addEventListener("change", () => { engKey = null; engRefresh(); });
+eng.arrows.addEventListener("change", redrawBoardForEngine);
 
 az.arrowToggle.addEventListener("change", () => { if (!puzzleMode) renderAnalyzeBoard(); });
 az.variationExitBtn.addEventListener("click", () => { variation = null; renderAnalyzeBoard(); });
@@ -2157,13 +2537,17 @@ az.analyzeBtn.addEventListener("click", async () => {
   if (!ok) { az.analyzeBtn.disabled = false; return; }
 
   az.analyzeStatus.textContent = "Analyzing… this can take a while at higher depth.";
+  analyzingGame = true;
+  engRefresh();
+  const analysisDepthUsed = parseInt(az.depthSelect.value, 10);
   try {
     analysis = await invoke("analyze_moves", {
       sans: loadedGame.sans,
       startFen: loadedGame.startFen,
-      depth: parseInt(az.depthSelect.value, 10),
+      depth: analysisDepthUsed,
       multipv: 5,
     });
+    analysisDepth = analysisDepthUsed;
     az.analyzeStatus.textContent = `Analyzed ${analysis.length} moves.`;
     renderAnalyzeMoveList();
     renderFlaggedList();
@@ -2174,7 +2558,9 @@ az.analyzeBtn.addEventListener("click", async () => {
   } catch (err) {
     az.analyzeStatus.textContent = "Analysis failed: " + err;
   } finally {
+    analyzingGame = false;
     az.analyzeBtn.disabled = false;
+    engRefresh();
   }
 });
 
@@ -2221,11 +2607,16 @@ function highlightCurrentMove() {
   });
 }
 
+az.flaggedHeading.addEventListener("click", () => az.flaggedPanel.classList.toggle("listCollapsed"));
+
 function renderFlaggedList() {
   az.flaggedList.innerHTML = "";
   const flagged = analysis
     .map((m, i) => ({ m, i }))
     .filter(({ m }) => m.grade === "mistake" || m.grade === "blunder");
+  // folded by default; the practice button below it stays visible
+  az.flaggedPanel.classList.add("listCollapsed");
+  az.flaggedCount.textContent = flagged.length ? `(${flagged.length})` : "";
 
   if (flagged.length === 0) {
     az.flaggedList.innerHTML = '<div class="emptyHint">No mistakes or blunders flagged — nice game!</div>';
@@ -2607,6 +2998,64 @@ let puzzleFen = null;
 let puzzleSelected = null;
 let puzzleLegalTargets = [];
 let puzzleViewIdx = 0;
+// Line explored after solving: starts as the solution, branches when you move a piece.
+let puzzleExp = null;
+
+function puzzleCurFen() {
+  return puzzleLocked && puzzleExp ? puzzleExp.fens[puzzleViewIdx] : puzzleFen;
+}
+
+function lockPuzzle(puzzle) {
+  puzzleLocked = true;
+  puzzleSelected = null;
+  puzzleLegalTargets = [];
+  puzzleViewIdx = 0;
+  const clickable = hasClickableLine(puzzle);
+  if (analysisDepth && puzzle && puzzle.bestLineUci && puzzle.bestLineUci.length &&
+      (puzzle.evalBeforeCp !== null && puzzle.evalBeforeCp !== undefined)) {
+    engSeedLine(puzzleFen, {
+      scoreCp: puzzle.evalBeforeCp, mate: puzzle.mateBefore ?? null,
+      sans: puzzle.bestLineSan || [], ucis: puzzle.bestLineUci, fens: puzzle.bestLineFens || [],
+    }, analysisDepth);
+  }
+  puzzleExp = {
+    fens: [puzzleFen].concat(clickable ? puzzle.bestLineFens : []),
+    ucis: clickable ? puzzle.bestLineUci.slice() : [],
+    sans: clickable ? (puzzle.bestLineSan || []).slice() : [],
+  };
+}
+
+function refreshPuzzleChips() {
+  const moves = az.puzzleFeedback.querySelector(".puzzleLine .lineMoves");
+  if (!moves || !puzzleExp) return;
+  renderLineChips(moves, { fenBefore: puzzleFen, bestLineSan: puzzleExp.sans }, (n) => {
+    puzzleViewIdx = n;
+    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  });
+  setActiveChip(moves, puzzleViewIdx);
+}
+
+function playPuzzleFreeMove(mv) {
+  const e = puzzleExp, i = puzzleViewIdx;
+  if (e.ucis[i] !== mv.uci) {
+    e.fens = e.fens.slice(0, i + 1).concat(mv.fen);
+    e.ucis = e.ucis.slice(0, i).concat(mv.uci);
+    e.sans = e.sans.slice(0, i).concat(mv.san);
+  }
+  puzzleViewIdx = i + 1;
+  refreshPuzzleChips();
+  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+}
+
+function startPuzzleEngineLine(line, n) {
+  const e = puzzleExp, i = puzzleViewIdx;
+  e.fens = e.fens.slice(0, i + 1).concat(line.fens);
+  e.ucis = e.ucis.slice(0, i).concat(line.ucis);
+  e.sans = e.sans.slice(0, i).concat(line.sans);
+  puzzleViewIdx = i + n;
+  refreshPuzzleChips();
+  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+}
 
 function isAcceptable(puzzle, uci) {
   if (Array.isArray(puzzle.acceptableMoves) && puzzle.acceptableMoves.length > 0) {
@@ -2627,7 +3076,7 @@ function enterPuzzleMode() {
   puzzleIndex = 0;
   puzzleSolved = 0;
   az.puzzlePanel.classList.add("show");
-  az.sidebar.classList.add("practicing");
+  document.getElementById("analyzeTab").classList.add("practicing");
   if (az.puzzlePanel.scrollIntoView) az.puzzlePanel.scrollIntoView({ block: "nearest", behavior: "smooth" });
   loadPuzzle();
 }
@@ -2640,6 +3089,7 @@ function loadPuzzle(browsing = false) {
   puzzleSelected = null;
   puzzleLegalTargets = [];
   puzzleLocked = false;
+  puzzleExp = null;
   puzzleViewIdx = 0;
   az.puzzleFeedback.className = "";
   az.puzzleFeedback.textContent = "";
@@ -2657,16 +3107,18 @@ function loadPuzzle(browsing = false) {
 function renderPuzzleBoard(flip) {
   const puzzle = puzzles[puzzleIndex];
   let fen = puzzleFen, lastMove = null, arrows = [];
-  if (puzzleLocked && puzzle) {
-    const ucis = hasClickableLine(puzzle) ? puzzle.bestLineUci : (puzzle.bestMoveUci ? [puzzle.bestMoveUci] : []);
-    const idx = hasClickableLine(puzzle) ? puzzleViewIdx : 0;
-    if (idx > 0) fen = puzzle.bestLineFens[idx - 1];
-    const sq = uciToSquares(idx > 0 ? ucis[idx - 1] : ucis[0]);
+  if (puzzleLocked && puzzle && puzzleExp) {
+    const idx = puzzleViewIdx;
+    fen = puzzleExp.fens[idx];
+    const sq = uciToSquares(idx > 0 ? puzzleExp.ucis[idx - 1] : puzzleExp.ucis[0]);
     if (idx > 0) lastMove = sq;
     if (sq) arrows = [{ from: sq[0], to: sq[1], brush: "blue" }];
     if (idx === 0 && hi.enable.checked && hi.arrows.checked) {
       arrows = hiArrowsFrom(hiData.get(`moves:${analysis.indexOf(puzzle)}:${hiRating()}`)).concat(arrows);
     }
+  }
+  for (const a of engineArrow(fen)) {
+    if (!arrows.some((x) => x.from === a.from && x.to === a.to)) arrows.push(a);
   }
   syncPuzzleNav();
   renderMaterialBars(az.materialTop, az.materialBottom, fen, flip);
@@ -2676,8 +3128,8 @@ function renderPuzzleBoard(flip) {
     arrows,
     selected: puzzleSelected,
     legalTargets: puzzleLegalTargets,
-    interactive: !puzzleLocked,
-    canDrag: (piece) => !puzzleLocked && isPieceOfColor(piece, sideToMove(puzzleFen)),
+    interactive: true,
+    canDrag: (piece) => isPieceOfColor(piece, sideToMove(puzzleCurFen())),
     onGrab: onPuzzleSquareClick,
     onDeselect: () => {
       puzzleSelected = null;
@@ -2695,12 +3147,13 @@ function renderPuzzleBoard(flip) {
       attemptPuzzleMove(from, to);
     },
   });
+  engRefresh();
 }
 
 async function onPuzzleSquareClick(sq) {
-  if (puzzleLocked) return;
-  const board = fenToBoard(puzzleFen);
-  const mover = sideToMove(puzzleFen);
+  const curFen = puzzleCurFen();
+  const board = fenToBoard(curFen);
+  const mover = sideToMove(curFen);
   const piece = board[sq];
   const isOwn = piece && ((mover === "white" && piece === piece.toUpperCase()) ||
                            (mover === "black" && piece === piece.toLowerCase()));
@@ -2716,13 +3169,13 @@ async function onPuzzleSquareClick(sq) {
     if (puzzleSelected === sq) return;
     puzzleSelected = sq;
     puzzleLegalTargets = [];
-    renderPuzzleBoard(mover === "black");
-    const fenAtPress = puzzleFen;
+    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+    const fenAtPress = curFen;
     let targets = [];
-    try { targets = await invoke("scratch_legal_targets", { fen: puzzleFen, square: sq }); } catch { targets = []; }
-    if (puzzleSelected !== sq || puzzleFen !== fenAtPress) return;
+    try { targets = await invoke("scratch_legal_targets", { fen: curFen, square: sq }); } catch { targets = []; }
+    if (puzzleSelected !== sq || puzzleCurFen() !== fenAtPress) return;
     puzzleLegalTargets = targets;
-    renderPuzzleBoard(mover === "black");
+    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
     return;
   }
   puzzleSelected = null;
@@ -2732,17 +3185,22 @@ async function onPuzzleSquareClick(sq) {
 
 async function attemptPuzzleMove(from, to) {
   const puzzle = puzzles[puzzleIndex];
+  const curFen = puzzleCurFen();
   let promotion = null;
-  if (needsPromotionMove(puzzleFen, from, to)) {
-    const mover = sideToMove(puzzleFen);
+  if (needsPromotionMove(curFen, from, to)) {
+    const mover = sideToMove(curFen);
     promotion = await askPromotion(az.promo, mover === "white" ? "w" : "b");
-    if (!promotion) { renderPuzzleBoard(mover === "black"); return; }
+    if (!promotion) { renderPuzzleBoard(sideToMove(puzzleFen) === "black"); return; }
   }
   let result;
   try {
-    result = await invoke("scratch_try_move", { fen: puzzleFen, from, to, promotion });
+    result = await invoke("scratch_try_move", { fen: curFen, from, to, promotion });
   } catch {
     renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+    return;
+  }
+  if (puzzleLocked) {
+    if (puzzleCurFen() === curFen) playPuzzleFreeMove(result);
     return;
   }
   if (isAcceptable(puzzle, result.uci)) {
@@ -2757,29 +3215,22 @@ async function attemptPuzzleMove(from, to) {
 function fillPuzzleFeedback(prefix, puzzle) {
   const box = az.puzzleFeedback;
   box.textContent = prefix;
-  if (!puzzle.bestLineSan || !puzzle.bestLineSan.length) return;
   const line = document.createElement("div");
   line.className = "lineMoves puzzleLine";
   const label = document.createElement("span");
   label.className = "lineLabel";
   label.textContent = "Line:";
-  line.appendChild(label);
-  if (hasClickableLine(puzzle)) {
-    const moves = document.createElement("span");
-    moves.className = "lineMoves";
-    renderLineChips(moves, puzzle, (n) => {
-      puzzleViewIdx = n;
-      setActiveChip(moves, n);
-      renderPuzzleBoard(sideToMove(puzzleFen) === "black");
-    });
-    line.appendChild(moves);
-    box.appendChild(line);
-    box.appendChild(buildPuzzleNav());
-    syncPuzzleNav();
-    return;
-  }
-  line.appendChild(document.createTextNode(" " + puzzle.bestLineSan.join(" ")));
+  const moves = document.createElement("span");
+  moves.className = "lineMoves";
+  line.append(label, moves);
   box.appendChild(line);
+  const hint = document.createElement("div");
+  hint.className = "hint";
+  hint.textContent = "Move pieces to explore other lines. Turn on the Engine panel to see what else was possible.";
+  box.appendChild(hint);
+  box.appendChild(buildPuzzleNav());
+  refreshPuzzleChips();
+  syncPuzzleNav();
 }
 
 function buildPuzzleNav() {
@@ -2806,9 +3257,9 @@ function buildPuzzleNav() {
 function syncPuzzleNav() {
   const puzzle = puzzles[puzzleIndex];
   const nav = az.puzzleFeedback.querySelector(".puzzleNav");
-  if (!nav || !puzzle || !hasClickableLine(puzzle)) return;
+  if (!nav || !puzzle || !puzzleExp) return;
   const atStart = puzzleViewIdx === 0;
-  const atEnd = puzzleViewIdx >= puzzle.bestLineUci.length;
+  const atEnd = puzzleViewIdx >= puzzleExp.ucis.length;
   nav.querySelector('[data-nav="start"]').disabled = atStart;
   nav.querySelector('[data-nav="prev"]').disabled = atStart;
   nav.querySelector('[data-nav="next"]').disabled = atEnd;
@@ -2818,8 +3269,8 @@ function syncPuzzleNav() {
 // same as azGo(), but for the solution line shown once a puzzle is solved/revealed
 function goPuzzleLine(where) {
   const puzzle = puzzles[puzzleIndex];
-  if (!puzzleLocked || !hasClickableLine(puzzle)) return;
-  const last = puzzle.bestLineUci.length;
+  if (!puzzleLocked || !puzzleExp) return;
+  const last = puzzleExp.ucis.length;
   if (where === "start") puzzleViewIdx = 0;
   else if (where === "end") puzzleViewIdx = last;
   else puzzleViewIdx = Math.max(0, Math.min(last, puzzleViewIdx + (where === "prev" ? -1 : 1)));
@@ -2872,7 +3323,7 @@ function showPuzzleNext() {
 }
 
 function handlePuzzleCorrect(puzzle) {
-  puzzleLocked = true;
+  lockPuzzle(puzzle);
   puzzleSolved += 1;
   az.puzzleFeedback.className = "show correct";
   fillPuzzleFeedback("Correct!", puzzle);
@@ -2896,9 +3347,7 @@ az.puzzleNextBtn.addEventListener("click", () => {
 az.puzzleRevealBtn.addEventListener("click", () => {
   if (puzzleLocked) return;
   const puzzle = puzzles[puzzleIndex];
-  puzzleLocked = true;
-  puzzleSelected = null;
-  puzzleLegalTargets = [];
+  lockPuzzle(puzzle);
   az.puzzleFeedback.className = "show reveal";
   fillPuzzleFeedback(`Answer: ${puzzle.bestMoveSan || "(no line available)"}`, puzzle);
   showPuzzleNext();
@@ -2925,7 +3374,7 @@ function finishPuzzles() {
 function exitPuzzleMode() {
   puzzleMode = false;
   az.puzzlePanel.classList.remove("show");
-  az.sidebar.classList.remove("practicing");
+  document.getElementById("analyzeTab").classList.remove("practicing");
   renderAnalyzeBoard();
 }
 

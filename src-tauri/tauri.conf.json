@@ -12,8 +12,8 @@
       {
         "label": "main",
         "title": "Maia Chess",
-        "width": 1180,
-        "height": 780,
+        "width": 1280,
+        "height": 820,
         "minWidth": 760,
         "minHeight": 560,
         "resizable": true,

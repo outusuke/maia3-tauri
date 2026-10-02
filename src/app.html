@@ -21,7 +21,7 @@
     <main>
     <!-- Play tab -->
     <div class="tabPanel active" id="playTab">
-      <section id="board-wrap">
+      <section id="board-wrap" class="boardCol">
         <div class="materialBar" id="materialTop"></div>
         <div id="board" aria-label="chess board"></div>
         <div class="materialBar" id="materialBottom"></div>
@@ -44,7 +44,7 @@
         </div>
       </section>
 
-      <aside id="sidebar">
+      <aside id="sidebarLeft" class="sideCol sideLeft">
         <div class="panel collapsible" id="setup-panel">
           <h2><span>New game</span><span id="setup-summary"></span></h2>
 
@@ -103,7 +103,9 @@
           <button id="start-btn" class="primary" title="Shortcut: N">Start game</button>
           <p class="hint">Runs on ONNX Runtime. First use of a model size may take a moment to prepare.</p>
         </div>
+      </aside>
 
+      <aside id="sidebar" class="sideCol">
         <div class="panel" id="moves-panel">
           <div class="inlineRow" style="justify-content:space-between; margin-bottom:6px;">
             <h2 style="margin:0;">Moves</h2>
@@ -126,7 +128,7 @@
 
     <!-- Analyze tab -->
     <div class="tabPanel" id="analyzeTab">
-      <section id="analyze-board-wrap" style="display:flex; flex-direction:column; gap:10px; align-items:center;">
+      <section id="analyze-board-wrap" class="boardCol">
         <div class="materialBar" id="aMaterialTop"></div>
         <div id="analyzeBoard" aria-label="analysis board"></div>
         <div class="materialBar" id="aMaterialBottom"></div>
@@ -151,7 +153,7 @@
           </div>
           <div id="variationLine" class="lineMoves"></div>
         </div>
-        <div id="evalGraphBox" style="display:none;">
+        <div class="panel" id="evalGraphBox" style="display:none;">
           <div id="evalGraphWrap"><svg id="evalGraph"></svg></div>
           <div id="evalInfo"></div>
           <div id="evalLine" class="lineMoves"></div>
@@ -159,7 +161,7 @@
         </div>
       </section>
 
-      <aside id="analyzeSidebar" style="width:340px; flex-shrink:0; display:flex; flex-direction:column; gap:16px;">
+      <aside id="analyzeLeft" class="sideCol">
 
         <div class="panel collapsible" id="loadPanel">
           <h2>Load a game</h2>
@@ -194,8 +196,8 @@
           <div id="analyzeStatus" class="hint" style="margin-top:8px;"></div>
         </div>
 
-        <div class="panel" id="flaggedPanel" style="display:none;">
-          <h2>Flagged moves</h2>
+        <div class="panel listCollapsed" id="flaggedPanel" style="display:none;">
+          <h2 id="flaggedHeading"><span>Flagged moves <span id="flaggedCount" class="hint"></span></span></h2>
           <div id="flaggedList"></div>
           <div class="inlineRow" id="practiceSideRow" style="display:none; margin-top:10px;">
             <label for="practiceSideSelect" style="font-size:12.5px; color:var(--muted);">Practice side</label>
@@ -236,6 +238,32 @@
             </div>
           </div>
           <div id="analyzeMoveList"></div>
+        </div>
+      </aside>
+
+      <aside id="analyzeSidebar" class="sideCol sideLeft">
+
+        <div class="panel" id="enginePanel">
+          <div class="engHead">
+            <label class="engSwitch" title="Stockfish evaluates the position on the board. Move pieces to try your own lines."><input type="checkbox" id="engEnable"> Engine</label>
+            <div class="engOpts">
+              <select id="engLines" title="Lines shown">
+                <option value="1">1 line</option>
+                <option value="2">2 lines</option>
+                <option value="3" selected>3 lines</option>
+              </select>
+            </div>
+          </div>
+          <div id="engNote" class="hint"></div>
+          <div id="engBody" style="display:none;">
+            <div class="engSummary">
+              <span id="engScore" class="engChip engScore">0.00</span>
+              <div class="engBar"><i id="engBarFill"></i></div>
+              <span id="engStatus" class="engStatus"></span>
+            </div>
+            <div id="engList"></div>
+            <label class="arrowToggle engFoot"><input type="checkbox" id="engArrows" checked> Arrows for each line on board</label>
+          </div>
         </div>
 
         <div class="panel" id="humanPanel" style="display:none;">

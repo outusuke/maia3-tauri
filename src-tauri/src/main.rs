@@ -15,9 +15,9 @@ use engine::Engine;
 use game::{Game, GameState};
 use setup::{install_stockfish, remove_onnx_model, remove_stockfish, run_setup, setup_status};
 use std::str::FromStr;
-use std::sync::Mutex;
-use std::time::Duration;
-use tauri::{AppHandle, State};
+use std::sync::{Mutex, MutexGuard};
+use std::time::{Duration, Instant};
+use tauri::{AppHandle, Manager, State};
 
 struct AppState {
     game: Mutex<Game>,
@@ -26,6 +26,31 @@ struct AppState {
     stockfish: Mutex<Option<Engine>>,
     /// Own Maia process so Analyze doesn't disturb a game in progress on the Play tab.
     insights: Mutex<Option<Engine>>,
+    insights_model: Mutex<Option<String>>,
+    insights_last_used: Mutex<Instant>,
+}
+
+const INSIGHTS_IDLE: Duration = Duration::from_secs(120);
+
+// the idle reaper may have killed it, so respawn on demand
+fn insights_slot<'a>(
+    app: &AppHandle,
+    state: &'a AppState,
+) -> Result<MutexGuard<'a, Option<Engine>>, String> {
+    let mut slot = state.insights.lock().map_err(|e| e.to_string())?;
+    if slot.is_none() {
+        let model = state
+            .insights_model
+            .lock()
+            .map_err(|e| e.to_string())?
+            .clone()
+            .ok_or("Maia insights engine is not running")?;
+        let (cmd, args) =
+            setup::onnx_engine_command(app, &model, vec!["--threads".into(), "2".into()])?;
+        *slot = Some(Engine::spawn(&cmd, &args)?);
+    }
+    *state.insights_last_used.lock().map_err(|e| e.to_string())? = Instant::now();
+    Ok(slot)
 }
 
 fn parse_promotion(p: Option<String>) -> Option<Piece> {
@@ -109,17 +134,14 @@ fn start_insights_engine(
     state: State<AppState>,
     command: String,
 ) -> Result<(), String> {
-    let mut slot = state.insights.lock().map_err(|e| e.to_string())?;
-    if slot.is_some() {
-        return Ok(());
-    }
-    let (cmd, args) = setup::onnx_engine_command(&app, &command, vec!["--threads".into(), "2".into()])?;
-    *slot = Some(Engine::spawn(&cmd, &args)?);
+    *state.insights_model.lock().map_err(|e| e.to_string())? = Some(command);
+    drop(insights_slot(&app, state.inner())?);
     Ok(())
 }
 
 #[tauri::command(async)]
 fn human_moves(
+    app: AppHandle,
     state: State<AppState>,
     start_fen: String,
     ucis: Vec<String>,
@@ -127,20 +149,21 @@ fn human_moves(
     ratings: Vec<u32>,
     rating: u32,
 ) -> Result<insights::HumanMoves, String> {
-    let mut slot = state.insights.lock().map_err(|e| e.to_string())?;
+    let mut slot = insights_slot(&app, state.inner())?;
     let maia = slot.as_mut().ok_or("Maia insights engine is not running")?;
     insights::human_moves(maia, &start_fen, &ucis, played.as_deref(), &ratings, rating)
 }
 
 #[tauri::command(async)]
 fn maia_estimate(
+    app: AppHandle,
     state: State<AppState>,
     start_fen: String,
     ucis: Vec<String>,
     plies: Vec<usize>,
     ratings: Vec<u32>,
 ) -> Result<Vec<engine::PlyLogProbs>, String> {
-    let mut slot = state.insights.lock().map_err(|e| e.to_string())?;
+    let mut slot = insights_slot(&app, state.inner())?;
     let maia = slot.as_mut().ok_or("Maia insights engine is not running")?;
     maia.maia_estimate(&start_fen, &ucis, &plies, &ratings, std::time::Duration::from_secs(120))
 }
@@ -255,6 +278,51 @@ fn analyze_position(
     )
 }
 
+/// One live-analysis line; scores are from White's perspective so the eval doesn't flip with the side to move.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LiveLine {
+    multipv: u32,
+    depth: u32,
+    score_cp: Option<i32>,
+    mate: Option<i32>,
+    sans: Vec<String>,
+    ucis: Vec<String>,
+    fens: Vec<String>,
+}
+
+#[tauri::command(async)]
+fn engine_lines(
+    state: State<AppState>,
+    fen: String,
+    depth: u32,
+    multipv: u32,
+) -> Result<Vec<LiveLine>, String> {
+    let board = Board::from_str(&fen).map_err(|e| format!("invalid FEN: {e}"))?;
+    let sign = if board.side_to_move() == chess::Color::White { 1 } else { -1 };
+
+    let mut slot = state.stockfish.lock().map_err(|e| e.to_string())?;
+    let eng = slot.as_mut().ok_or("stockfish is not running")?;
+    let mut lines = eng.analyze(&fen, depth, multipv.max(1), Duration::from_secs(60))?;
+    lines.sort_by_key(|l| l.multipv);
+
+    Ok(lines
+        .into_iter()
+        .map(|l| {
+            let (sans, ucis, fens) = analysis::sanify_line(&board, &l.pv);
+            LiveLine {
+                multipv: l.multipv,
+                depth: l.depth,
+                score_cp: l.score_cp.map(|cp| cp * sign),
+                mate: l.mate.map(|m| m * sign),
+                sans,
+                ucis,
+                fens,
+            }
+        })
+        .collect())
+}
+
 #[tauri::command(async)]
 fn analyze_pgn(
     state: State<AppState>,
@@ -359,6 +427,26 @@ fn main() {
             engine: Mutex::new(None),
             stockfish: Mutex::new(None),
             insights: Mutex::new(None),
+            insights_model: Mutex::new(None),
+            insights_last_used: Mutex::new(Instant::now()),
+        })
+        .setup(|app| {
+            let handle = app.handle().clone();
+            std::thread::spawn(move || loop {
+                std::thread::sleep(Duration::from_secs(15));
+                let state = handle.state::<AppState>();
+                let idle = state
+                    .insights_last_used
+                    .lock()
+                    .map(|t| t.elapsed() > INSIGHTS_IDLE)
+                    .unwrap_or(false);
+                if idle {
+                    if let Ok(mut slot) = state.insights.try_lock() {
+                        *slot = None;
+                    }
+                }
+            });
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             new_game,
@@ -379,6 +467,7 @@ fn main() {
             stop_stockfish,
             stockfish_running,
             analyze_position,
+            engine_lines,
             analyze_pgn,
             analyze_moves,
             parse_pgn,
