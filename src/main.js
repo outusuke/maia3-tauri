@@ -639,8 +639,8 @@ els.eloSlider.addEventListener("change", async () => {
     setStatus(`Could not update Elo: ${err}`);
   }
 });
-els.temperatureSlider.addEventListener("input", () => { els.temperatureValue.textContent = els.temperatureSlider.value; });
-els.topPSlider.addEventListener("input", () => { els.topPValue.textContent = els.topPSlider.value; });
+els.temperatureSlider.addEventListener("input", () => { els.temperatureValue.textContent = Number(els.temperatureSlider.value).toFixed(2).replace(/0$/, ""); });
+els.topPSlider.addEventListener("input", () => { els.topPValue.textContent = Number(els.topPSlider.value).toFixed(2).replace(/0$/, ""); });
 els.startBtn.addEventListener("click", startGame);
 els.flipBtn.addEventListener("click", () => { flipped = !flipped; renderPlayBoard(); });
 els.resignBtn.addEventListener("click", resign);

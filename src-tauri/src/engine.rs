@@ -6,6 +6,8 @@ use std::sync::mpsc::{self, Receiver};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use crate::setup::NoWindow;
+
 /// One `go depth N` result line. Scores are from the side to move's perspective.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -82,9 +84,16 @@ impl Engine {
     pub fn spawn(command: &str, args: &[String]) -> Result<Self, String> {
         let mut child = Command::new(command)
             .args(args)
+            .no_window()
+            .env("PYTHONUTF8", "1")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            // A release build on Windows has no console, so there's no stderr to inherit.
+            .stderr(if cfg!(all(windows, not(debug_assertions))) {
+                Stdio::null()
+            } else {
+                Stdio::inherit()
+            })
             .spawn()
             .map_err(|e| format!("failed to launch '{command}': {e}"))?;
 

@@ -629,8 +629,9 @@ body.is-dragging, body.is-dragging * {
 .panel.collapsible > h2::after { content: "▾"; }
 .panel.collapsible.collapsed > h2 { margin-bottom: 0; }
 .panel.collapsible.collapsed > h2::after { content: "▸"; }
-.panel.collapsible.collapsed > :not(h2):not(#elo-field) { display: none; }
+.panel.collapsible.collapsed > :not(h2):not(#elo-field):not(#start-btn) { display: none; }
 .panel.collapsible.collapsed > #elo-field { margin-top: 10px; } /* Elo is live now, so keep it out even when collapsed */
+.panel.collapsible.collapsed > #start-btn { margin-top: 4px; } /* the panel folds up when a game starts, and this is how you start the next one */
 
 #flaggedList { max-height: 38vh; overflow-y: auto; }
 #flaggedPanel > h2 { display: flex; justify-content: space-between; cursor: pointer; user-select: none; }

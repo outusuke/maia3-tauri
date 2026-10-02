@@ -7,6 +7,22 @@ use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
 
+/// Without this, every child process flashes a console window on Windows release builds.
+pub trait NoWindow {
+    fn no_window(&mut self) -> &mut Self;
+}
+
+impl NoWindow for Command {
+    fn no_window(&mut self) -> &mut Self {
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            self.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        }
+        self
+    }
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SetupStatus {
@@ -460,8 +476,11 @@ fn run_and_stream_with(
 
     let mut child = match Command::new(program)
         .args(args)
+        .no_window()
         // Python block-buffers piped stdout, so output would otherwise arrive in one lump at the end.
         .env("PYTHONUNBUFFERED", "1")
+        // Windows Python defaults to the ANSI code page, which chokes on pip's and tqdm's output.
+        .env("PYTHONUTF8", "1")
         .env("PIP_DISABLE_PIP_VERSION_CHECK", "1")
         .env("PIP_PROGRESS_BAR", "off")
         // Every venv is throwaway or built once, so pip's cache would just sit there (~300 MB of torch wheels).
@@ -507,7 +526,7 @@ fn run_and_stream(app: &AppHandle, program: &str, args: &[&str]) -> bool {
 const STOCKFISH_RELEASE_BASE: &str =
     "https://github.com/official-stockfish/Stockfish/releases/latest/download";
 
-/// Stockfish 19+ ships one universal .tar.gz per platform (the old per-CPU names 404). Empty = no known prebuilt, e.g. Windows.
+/// Stockfish 19+ ships one universal .tar.gz per platform (the old per-CPU names 404). Empty = no known prebuilt (Windows is handled separately, as a .zip).
 fn stockfish_candidates() -> Vec<&'static str> {
     let os = std::env::consts::OS;
     let arch = std::env::consts::ARCH;
@@ -528,6 +547,11 @@ fn stockfish_candidates() -> Vec<&'static str> {
 }
 
 fn download_stockfish(app: &AppHandle, progress: &mut Progress) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        return download_stockfish_windows(app, progress);
+    }
+    #[allow(unreachable_code)]
     let candidates = stockfish_candidates();
     if candidates.is_empty() {
         return Err(format!(
@@ -663,6 +687,78 @@ fn download_stockfish(app: &AppHandle, progress: &mut Progress) -> Result<(), St
     }
 
     Err("couldn't auto-download a Stockfish build for this machine".into())
+}
+
+
+/// Windows: Stockfish 19+ ships one universal .zip per architecture (it picks AVX2/AVX-512/etc. at runtime).
+#[cfg(windows)]
+fn download_stockfish_windows(app: &AppHandle, progress: &mut Progress) -> Result<(), String> {
+    let name = match std::env::consts::ARCH {
+        "x86_64" => "stockfish-windows-x86-64-universal",
+        "aarch64" => "stockfish-windows-arm64-universal",
+        other => return Err(format!("no prebuilt Stockfish available for Windows/{other}")),
+    };
+    let install_dir = stockfish_install_dir(app)?;
+    let client = reqwest::blocking::Client::builder()
+        .user_agent("maia-chess-setup")
+        .timeout(Duration::from_secs(900))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    emit_log(app, format!("    Trying {name} ..."));
+    let url = format!("{STOCKFISH_RELEASE_BASE}/{name}.zip");
+    let mut resp = client
+        .get(&url)
+        .send()
+        .and_then(|r| r.error_for_status())
+        .map_err(|e| format!("{name}: {e}"))?;
+
+    let total = resp.content_length();
+    let mut bytes: Vec<u8> = Vec::with_capacity(total.unwrap_or(80_000_000) as usize);
+    let mut chunk = [0u8; 64 * 1024];
+    let mut last_pct: i32 = -1;
+    loop {
+        let n = resp.read(&mut chunk).map_err(|e| format!("{name}: download failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        bytes.extend_from_slice(&chunk[..n]);
+        let mb = bytes.len() as f32 / 1_048_576.0;
+        match total {
+            Some(t) if t > 0 => {
+                let frac = bytes.len() as f32 / t as f32;
+                let pct = (frac * 100.0) as i32;
+                if pct != last_pct {
+                    last_pct = pct;
+                    progress.update(Some(frac), Some(format!("{mb:.1} / {:.1} MB", t as f32 / 1_048_576.0)));
+                }
+            }
+            _ => progress.update(None, Some(format!("{mb:.1} MB downloaded"))),
+        }
+    }
+    emit_log(app, format!("    Downloaded {:.1} MB", bytes.len() as f32 / 1_048_576.0));
+
+    progress.advance();
+    let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("{name}: not a valid zip: {e}"))?;
+    for i in 0..zip.len() {
+        let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
+        if f.is_dir() {
+            continue;
+        }
+        let file_name = Path::new(f.name())
+            .file_name()
+            .map(|s| s.to_string_lossy().to_lowercase())
+            .unwrap_or_default();
+        // The engine is stockfish-windows-...exe; skip anything else in the archive.
+        if file_name.starts_with("stockfish") && file_name.ends_with(".exe") {
+            let dest = install_dir.join(stockfish_exe_name());
+            let mut out = std::fs::File::create(&dest).map_err(|e| e.to_string())?;
+            std::io::copy(&mut f, &mut out).map_err(|e| e.to_string())?;
+            emit_log(app, format!("    Got it: {name}"));
+            return Ok(());
+        }
+    }
+    Err(format!("{name}: archive didn't contain a stockfish .exe"))
 }
 
 fn stockfish_manual_install_hint() -> &'static str {
@@ -841,7 +937,17 @@ fn resolve_resource(app: &AppHandle, file_name: &str) -> Result<PathBuf, String>
             format!("resources/{file_name}"),
             tauri::path::BaseDirectory::Resource,
         )
+        .map(strip_verbatim_prefix)
         .map_err(|e| format!("couldn't resolve resource dir: {e}"))
+}
+
+/// Tauri can hand back `\\?\C:\...` paths on Windows, which Python and pip don't always accept.
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    let text = path.to_string_lossy().into_owned();
+    match text.strip_prefix(r"\\?\") {
+        Some(rest) if !rest.starts_with("UNC") => PathBuf::from(rest),
+        _ => path,
+    }
 }
 
 fn onnx_export_script(app: &AppHandle) -> Result<PathBuf, String> {
@@ -861,6 +967,7 @@ fn onnx_venv_works(app: &AppHandle) -> bool {
                 "-c",
                 "import importlib.util as u,sys; sys.exit(0 if all(u.find_spec(m) for m in ('chess','numpy','onnxruntime')) else 1)",
             ])
+            .no_window()
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .status()
@@ -907,16 +1014,27 @@ pub fn onnx_engine_command(
 
 /// A GUI-launched app's PATH is often minimal, so check the usual install dirs too.
 fn find_python() -> Option<PathBuf> {
-    ["python3", "python"]
+    let names: &[&str] = if cfg!(windows) {
+        &["py", "python", "python3"]
+    } else {
+        &["python3", "python"]
+    };
+    names
         .iter()
-        .find_map(|n| find_executable(n))
-        .or_else(|| {
-            if cfg!(windows) {
-                find_executable("py")
-            } else {
-                None
-            }
-        })
+        .filter_map(|n| find_executable(n))
+        .find(|p| !cfg!(windows) || python_can_make_venvs(p))
+}
+
+/// Windows ships a Microsoft Store stub named python.exe that exits with an error when given arguments, so a PATH hit alone proves nothing.
+fn python_can_make_venvs(python: &Path) -> bool {
+    Command::new(python)
+        .args(["-c", "import venv"])
+        .no_window()
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 fn pip_install(
