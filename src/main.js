@@ -2469,7 +2469,7 @@ function loadAnalysisGame(game) {
   az.loadPanel.classList.add("collapsed");
   az.controlsPanel.classList.remove("collapsed");
   az.analyzeStatus.textContent = `Loaded ${game.sans.length} ply. Click "Analyze Game" to grade it.`;
-  azFlipped = az.sideSelect.value === "black";
+  azFlipped = game.myColor === "white" || game.myColor === "black" ? game.myColor === "black" : az.sideSelect.value === "black";
   renderAnalyzeBoard();
   drawEvalGraph();
   exitPuzzleMode();
