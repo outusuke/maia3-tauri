@@ -809,6 +809,7 @@ async function startGame() {
       extraArgs: [
         "--temperature", String(temperature),
         "--top-p", String(topP),
+        "--opening-moves", "4",
         // Fresh seed per game so temperature > 0 actually varies between games.
         "--seed", String((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0),
       ],
