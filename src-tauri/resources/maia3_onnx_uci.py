@@ -162,13 +162,14 @@ def clamp_multipv(value):
 
 
 class Maia3ONNXEngine:
-    def __init__(self, onnx_path, history, use_uci_history, elo, temperature, top_p, multipv, seed, threads=2):
+    def __init__(self, onnx_path, history, use_uci_history, elo, temperature, top_p, multipv, seed, threads=2, opening_moves=0):
         self.history_len = history
         self.use_uci_history = use_uci_history
         self.self_elo = elo
         self.oppo_elo = elo
         self.temperature = temperature
         self.top_p = top_p
+        self.opening_moves = opening_moves
         self.multipv = clamp_multipv(multipv)
         self.rng = np.random.default_rng(seed)
 
@@ -245,7 +246,10 @@ class Maia3ONNXEngine:
         logits = logits_move[0].astype(np.float64)
         logits[~legal_mask] = -np.inf
 
-        idx = sample_from_logits(logits, self.temperature, self.top_p, self.rng)
+        # Low temperature collapses move one to a single reply, so open up the first few moves.
+        in_opening = self.temperature > 0 and self.board.fullmove_number <= self.opening_moves
+        temperature, top_p = (1.0, 1.0) if in_opening else (self.temperature, self.top_p)
+        idx = sample_from_logits(logits, temperature, top_p, self.rng)
         move = self._move_from_index(idx)
 
         probs = softmax(logits)
@@ -514,6 +518,7 @@ def main():
                     help="RNG seed for temperature sampling. Omit for a fresh, "
                          "OS-entropy seed each run; pass a value to reproduce a "
                          "specific game.")
+    p.add_argument("--opening-moves", type=int, default=0)
     p.add_argument("--threads", type=int, default=2)
     args = p.parse_args()
 
@@ -521,6 +526,7 @@ def main():
         onnx_path=args.onnx, history=args.history, use_uci_history=args.use_uci_history,
         elo=args.elo, temperature=args.temperature, top_p=args.top_p,
         multipv=args.multipv, seed=args.seed, threads=args.threads,
+        opening_moves=args.opening_moves,
     )
     engine.run()
 
