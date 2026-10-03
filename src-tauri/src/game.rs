@@ -165,7 +165,7 @@ impl Game {
             BoardStatus::Ongoing => {
                 if is_draw_by_repetition {
                     ("draw".to_string(), None)
-                } else if is_draw_by_fifty_move {
+                } else if is_draw_by_fifty_move || insufficient_material(&self.board) {
                     ("draw".to_string(), None)
                 } else {
                     ("ongoing".to_string(), None)
@@ -367,6 +367,24 @@ fn sanitize_castle_rights(fen: &str) -> String {
 
     fields[2] = if cleaned.is_empty() { "-" } else { &cleaned };
     fields.join(" ")
+}
+
+// The chess crate only reports mate/stalemate; without this Maia gets asked to move in dead positions and hangs.
+fn insufficient_material(board: &Board) -> bool {
+    if board.pieces(Piece::Pawn).popcnt() > 0
+        || board.pieces(Piece::Rook).popcnt() > 0
+        || board.pieces(Piece::Queen).popcnt() > 0
+    {
+        return false;
+    }
+    let knights = board.pieces(Piece::Knight).popcnt();
+    let bishops = *board.pieces(Piece::Bishop);
+    if knights + bishops.popcnt() <= 1 {
+        return true;
+    }
+    // K+B vs K+B only counts when the bishops share a square colour.
+    let square_color = |sq: Square| (sq.get_file().to_index() + sq.get_rank().to_index()) % 2;
+    knights == 0 && bishops.map(square_color).collect::<std::collections::HashSet<_>>().len() == 1
 }
 
 /// FEN without the move clocks: the fields that define a repeated position.
