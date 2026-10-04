@@ -584,6 +584,8 @@ const els = {
   temperatureValue: document.getElementById("temperature-value"),
   topPSlider: document.getElementById("top-p-slider"),
   topPValue: document.getElementById("top-p-value"),
+  openingCheckbox: document.getElementById("opening-checkbox"),
+  helpToast: document.getElementById("help-toast"),
   promoPicker: document.getElementById("promo-picker"),
   startFenInput: document.getElementById("start-fen-input"),
   clearFenBtn: document.getElementById("clear-fen-btn"),
@@ -641,6 +643,39 @@ els.eloSlider.addEventListener("change", async () => {
 });
 els.temperatureSlider.addEventListener("input", () => { els.temperatureValue.textContent = Number(els.temperatureSlider.value).toFixed(2).replace(/0$/, ""); });
 els.topPSlider.addEventListener("input", () => { els.topPValue.textContent = Number(els.topPSlider.value).toFixed(2).replace(/0$/, ""); });
+const HELP = {
+  temperature: ["Temperature", "How closely Maia sticks to its favorite move. Low plays the top choice almost every time. 1.0 mirrors how real players at this Elo pick moves."],
+  topP: ["Top-p", "Drops the least likely moves before Maia picks. Lower cuts obvious blunders. At 1.0 every legal move stays in play."],
+  opening: ["Loose opening", "Plays Maia's first 4 moves at temp 1.0 and top-p 1.0, so low temperatures don't open 1.e4 every game. Your settings take over from move 5."],
+};
+let helpKey = null;
+let helpTimer = null;
+
+function hideHelp() {
+  helpKey = null;
+  els.helpToast.classList.remove("show");
+  document.querySelectorAll(".helpBtn").forEach((b) => b.classList.remove("active"));
+}
+
+function showHelp(key, ms = 7000) {
+  clearTimeout(helpTimer);
+  helpKey = key;
+  const [title, body] = HELP[key];
+  els.helpToast.textContent = `${title}. ${body}`;
+  els.helpToast.classList.add("show");
+  document.querySelectorAll(".helpBtn").forEach((b) => b.classList.toggle("active", b.dataset.help === key));
+  helpTimer = setTimeout(hideHelp, ms);
+}
+
+document.querySelectorAll(".helpBtn").forEach((btn) => btn.addEventListener("click", () => {
+  if (helpKey === btn.dataset.help) { clearTimeout(helpTimer); hideHelp(); } else showHelp(btn.dataset.help);
+}));
+[[els.temperatureSlider, "temperature"], [els.topPSlider, "topP"]].forEach(([el, key]) => {
+  el.addEventListener("pointerdown", () => showHelp(key, 60000));
+  el.addEventListener("pointerup", () => showHelp(key, 2500));
+});
+els.openingCheckbox.addEventListener("change", () => { if (els.openingCheckbox.checked) showHelp("opening"); });
+
 els.startBtn.addEventListener("click", startGame);
 els.flipBtn.addEventListener("click", () => { flipped = !flipped; renderPlayBoard(); });
 els.resignBtn.addEventListener("click", resign);
@@ -794,8 +829,9 @@ async function startGame() {
 
     const model = getActiveModel();
     const elo = parseInt(els.eloSlider.value, 10);
-    const temperature = els.temperatureSlider.value;
-    const topP = els.topPSlider.value;
+    const temperature = Number(els.temperatureSlider.value);
+    const topP = Number(els.topPSlider.value);
+    const openingMoves = els.openingCheckbox.checked ? 4 : 0;
 
     state = await invoke("new_game", { fen: fenInput || null });
     startFen = state.fen === STANDARD_FEN ? STANDARD_FEN : (fenInput || state.fen);
@@ -809,7 +845,7 @@ async function startGame() {
       extraArgs: [
         "--temperature", String(temperature),
         "--top-p", String(topP),
-        "--opening-moves", "4",
+        "--opening-moves", String(openingMoves),
         // Fresh seed per game so temperature > 0 actually varies between games.
         "--seed", String((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0),
       ],
@@ -824,7 +860,9 @@ async function startGame() {
     els.eloLiveHint.style.display = "";
     renderPlayBoard();
     renderMoveList();
-    const tempNote = Number(temperature) > 0 ? `, temp ${temperature}` : ", greedy";
+    const tempNote = temperature > 0
+      ? `, temp ${temperature}, top-p ${topP}${openingMoves ? `, opening ${openingMoves}` : ""}`
+      : ", greedy";
     setStatus(`Playing as ${playerColor}. Maia-3 (${model}, ${elo} Elo${tempNote}) is your opponent.`);
 
     if (state.turn !== playerColor) {
