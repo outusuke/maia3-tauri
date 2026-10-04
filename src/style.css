@@ -401,6 +401,44 @@ button.small:disabled { opacity: 0.5; cursor: default; }
 }
 .inlineRow { display: flex; align-items: center; gap: 8px; }
 
+.settingRow { margin-bottom: 12px; font-size: 13px; color: var(--muted); }
+.settingHead { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.settingRow input[type="range"] { width: 100%; }
+#setup-panel .checkRow { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 0; cursor: pointer; }
+.helpBtn {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.helpBtn:hover, .helpBtn.active { color: var(--text); border-color: var(--accent); }
+
+#help-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  max-width: 380px;
+  padding: 10px 14px;
+  background: var(--panel-bg-2);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 50;
+}
+#help-toast.show { opacity: 1; }
+
 .square { cursor: grab; }
 .square.drag-over::after {
   content: ""; position: absolute; inset: 0;
