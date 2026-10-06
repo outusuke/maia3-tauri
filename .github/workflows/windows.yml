@@ -1,6 +1,10 @@
 name: Windows
 on:
   workflow_dispatch:
+    inputs:
+      models:
+        description: "Models to bundle (space-separated ids from the models release)"
+        default: "maia3-23m"
   release:
     types: [published]
 jobs:
@@ -15,6 +19,12 @@ jobs:
       - uses: swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
+      - name: Fetch ONNX Runtime, Stockfish and the Maia models
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODELS: ${{ inputs.models || 'maia3-23m' }}
+        run: python scripts/fetch_assets.py
       - name: Install Tauri CLI
         run: cargo install tauri-cli --version "^2" --locked
       - name: Build installer

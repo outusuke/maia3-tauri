@@ -1,10 +1,32 @@
 name: Flatpak
 on:
   workflow_dispatch:
+    inputs:
+      models:
+        description: "Models to bundle (space-separated ids from the models release)"
+        default: "maia3-23m"
   release:
     types: [published]
 jobs:
+  assets:
+    name: "Fetch bundled assets"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Fetch ONNX Runtime, Stockfish and the Maia models
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODELS: ${{ inputs.models || 'maia3-23m' }}
+        run: python3 scripts/fetch_assets.py
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bundled-assets
+          path: |
+            src-tauri/resources/models/*.onnx
+            src-tauri/resources/ort/*
+            src-tauri/resources/stockfish/*
   build:
+    needs: assets
     name: "Build Flatpak"
     runs-on: ubuntu-latest
     container:
@@ -12,6 +34,10 @@ jobs:
       options: --privileged
     steps:
       - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          name: bundled-assets
+          path: src-tauri/resources
       - name: Build Flatpak
         uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
