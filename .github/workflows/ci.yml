@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    name: cargo check + test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri
+            src-tauri/maia-core
+
+      # Tauri's Linux deps; the check fails at the webkit/gtk build scripts without them
+      - name: System libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      # no --locked: the committed Cargo.lock predates maia-core, ort and zip
+      - name: Check the desktop app
+        run: cargo check --manifest-path src-tauri/Cargo.toml
+
+      - name: Test maia-core
+        run: cargo test --manifest-path src-tauri/maia-core/Cargo.toml
+
+      - name: Keep the regenerated lockfile
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Cargo.lock
+          path: src-tauri/Cargo.lock

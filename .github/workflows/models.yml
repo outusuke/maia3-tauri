@@ -1,0 +1,73 @@
+name: Models
+
+# Phones can't run the torch export, so this exports the ONNX models, checks Rust against Python,
+# and publishes them to the "models" release.
+on:
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Space-separated model ids"
+        default: "maia3-23m"
+      publish:
+        description: "Upload to the 'models' release"
+        type: boolean
+        default: true
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/maia-core
+
+      - name: Python dependencies (same as the in-app export)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch --index-url https://download.pytorch.org/whl/cpu
+          pip install --no-deps https://github.com/CSSLab/maia3/archive/refs/heads/main.tar.gz
+          pip install numpy python-chess huggingface_hub safetensors onnx onnxruntime
+
+      - name: Build the Rust engine
+        run: cargo build --release --manifest-path src-tauri/maia-core/Cargo.toml
+
+      - name: Export
+        run: |
+          mkdir -p out
+          for m in ${{ inputs.models }}; do
+            python src-tauri/resources/export_maia3_onnx.py --model "$m" --output "out/$m.onnx" --validate
+          done
+          ls -lh out
+
+      # a parity failure shouldn't block publishing, but read its log before trusting the Android build
+      - name: Compare Rust against Python
+        continue-on-error: true
+        run: |
+          # reuse the library from the pip wheel
+          export ORT_DYLIB_PATH=$(python -c "import glob,os,onnxruntime as o; print(sorted(glob.glob(os.path.join(os.path.dirname(o.__file__),'capi','libonnxruntime.so*')))[0])")
+          echo "ORT_DYLIB_PATH=$ORT_DYLIB_PATH"
+          for m in ${{ inputs.models }}; do
+            echo "=== Rust vs Python on $m ==="
+            python scripts/parity.py "out/$m.onnx" src-tauri/resources/maia3_onnx_uci.py src-tauri/maia-core/target/release/maia-uci
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: onnx-models
+          path: out/*.onnx
+
+      - name: Publish to the models release
+        if: ${{ inputs.publish }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view models >/dev/null 2>&1 || gh release create models --prerelease \
+            --title "Maia-3 ONNX models" --notes "Exported by the Models workflow; the Android workflow bundles these into the APK."
+          gh release upload models out/*.onnx --clobber
