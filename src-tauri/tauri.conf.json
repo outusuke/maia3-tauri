@@ -22,7 +22,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
     }
   },
   "bundle": {
@@ -32,7 +32,7 @@
     "shortDescription": "Play chess against the human-like Maia-3 engine",
     "longDescription": "A simple, Lichess-inspired chess GUI. Plays locally against the Maia-3 (CSSLab) human-like UCI chess engine at a chosen Elo.",
     "icon": ["icons/icon.png", "icons/icon.ico"],
-    "resources": ["resources/*"],
+    "resources": ["resources/models/*", "resources/ort/*", "resources/stockfish/*"],
     "linux": {
       "deb": {
         "depends": []

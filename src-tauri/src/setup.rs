@@ -2,10 +2,12 @@ use serde::Serialize;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::thread;
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter, Manager};
+
+use crate::native_stockfish;
 
 /// Without this, every child process flashes a console window on Windows release builds.
 pub trait NoWindow {
@@ -40,6 +42,8 @@ pub struct SetupStatus {
     pub stockfish_bytes: Option<u64>,
     /// Host programs like a system Stockfish aren't visible in Flatpak; the UI uses this to push the built-in download.
     pub flatpak: bool,
+    pub apk_path: Option<String>,
+    pub apk_models: Vec<String>,
 }
 
 /// The three console scripts install together, so finding any one means ready.
@@ -224,8 +228,79 @@ fn downloaded_stockfish_path(app: &AppHandle) -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-/// Order: STOCKFISH_PATH env var, PATH plus well-known dirs, the app's downloaded copy, then the login shell. Always a full path.
+const APK_MODEL_DIR: &str = "assets/models/";
+
+fn apk_path() -> Option<PathBuf> {
+    let cmdline = std::fs::read_to_string("/proc/self/cmdline").ok()?;
+    let package = cmdline.split(['\0', ':']).next()?;
+    let marker = format!("/{package}-");
+    // WebView's APK is mapped too, so match on our own package dir.
+    std::fs::read_to_string("/proc/self/maps")
+        .ok()?
+        .lines()
+        .filter_map(|l| l.split_whitespace().nth(5))
+        .find(|p| p.ends_with(".apk") && p.contains(&marker))
+        .map(PathBuf::from)
+}
+
+fn bundled_models() -> &'static std::collections::HashMap<String, u64> {
+    static MODELS: OnceLock<std::collections::HashMap<String, u64>> = OnceLock::new();
+    MODELS.get_or_init(|| {
+        let mut found = std::collections::HashMap::new();
+        if !cfg!(target_os = "android") {
+            return found;
+        }
+        let Some(file) = apk_path().and_then(|p| std::fs::File::open(p).ok()) else {
+            return found;
+        };
+        let Ok(mut zip) = zip::ZipArchive::new(file) else {
+            return found;
+        };
+        for i in 0..zip.len() {
+            let Ok(entry) = zip.by_index_raw(i) else {
+                continue;
+            };
+            if let Some(id) = entry.name().strip_prefix(APK_MODEL_DIR).and_then(|n| n.strip_suffix(".onnx")) {
+                found.insert(id.to_string(), entry.size());
+            }
+        }
+        found
+    })
+}
+
+/// Unpacks the model from the APK once so ORT can load it by path instead of from a second copy in RAM.
+fn extract_bundled_model(app: &AppHandle, model: &str) -> Result<PathBuf, String> {
+    let apk = apk_path().ok_or("couldn't locate the app's APK in /proc/self/maps")?;
+    let file = std::fs::File::open(&apk).map_err(|e| format!("could not open {}: {e}", apk.display()))?;
+    let mut zip = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+    let mut entry = zip
+        .by_name(&format!("{APK_MODEL_DIR}{model}.onnx"))
+        .map_err(|_| format!("{model} isn't bundled in this build"))?;
+
+    let dir = app_data_dir(app)?.join("bundled-models");
+    std::fs::create_dir_all(&dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;
+    let path = dir.join(format!("{model}.onnx"));
+    if path.metadata().map(|m| m.len() == entry.size()).unwrap_or(false) {
+        return Ok(path);
+    }
+
+    let tmp = path.with_extension("onnx.part");
+    let mut out = std::fs::File::create(&tmp).map_err(|e| format!("could not write {}: {e}", tmp.display()))?;
+    std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
+    drop(out);
+    std::fs::rename(&tmp, &path).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 pub fn resolve_stockfish(app: &AppHandle) -> Option<String> {
+    if cfg!(target_os = "android") {
+        return native_stockfish::available().then(|| native_stockfish::LIBRARY.to_string());
+    }
+    resolve_stockfish_desktop(app)
+}
+
+/// Order: STOCKFISH_PATH env var, PATH plus well-known dirs, the app's downloaded copy, then the login shell. Always a full path.
+fn resolve_stockfish_desktop(app: &AppHandle) -> Option<String> {
     if let Some(p) = std::env::var_os("STOCKFISH_PATH").map(PathBuf::from) {
         if is_executable_file(&p) {
             return Some(p.to_string_lossy().to_string());
@@ -272,14 +347,14 @@ pub fn setup_status(app: AppHandle) -> SetupStatus {
     let onnx_models_ready = onnx_exported_models(&app);
     let onnx_model_bytes = onnx_models_ready
         .iter()
-        .filter_map(|m| {
-            let bytes = onnx_model_path(&app, m).ok()?.metadata().ok()?.len();
-            Some((m.clone(), bytes))
-        })
+        .filter_map(|m| Some((m.clone(), onnx_model_size(&app, m)?)))
         .collect();
+    let apk = if cfg!(target_os = "android") { apk_path() } else { None };
     SetupStatus {
+        apk_path: apk.map(|p| p.to_string_lossy().into_owned()),
+        apk_models: bundled_models().keys().cloned().collect(),
         engine_ready: any_on_path(MAIA_CANDIDATES),
-        onnx_runtime_ready: onnx_venv_works(&app),
+        onnx_runtime_ready: onnx_runtime_ready(&app),
         onnx_models_ready,
         onnx_model_bytes,
         stockfish_ready: stockfish_path.is_some(),
@@ -805,48 +880,13 @@ fn install_stockfish_impl(app: &AppHandle) -> Result<(), String> {
     }
 }
 
-/// Independent of the legacy `run_setup`; called when the user opts into Stockfish on the first-launch screen.
+/// Called when the user opts into Stockfish on the first-launch screen.
 #[tauri::command]
 pub async fn install_stockfish(app: AppHandle) -> Result<(), String> {
     // Blocking download: keep it off the UI thread and the async workers.
     tauri::async_runtime::spawn_blocking(move || install_stockfish_impl(&app))
         .await
         .map_err(|e| format!("Stockfish install task failed: {e}"))?
-}
-
-/// Legacy: pulls in the full PyTorch runtime. Kept only for the old "pytorch" backend path in main.rs.
-#[tauri::command]
-pub async fn run_setup(app: AppHandle) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || run_setup_blocking(app))
-        .await
-        .map_err(|e| format!("setup task failed: {e}"))?
-}
-
-fn run_setup_blocking(app: AppHandle) -> Result<(), String> {
-    let status = setup_status(app.clone());
-
-    if status.engine_ready {
-        emit_log(&app, "Maia-3 engine: already on PATH, skipping install.");
-    } else {
-        emit_log(&app, "Maia-3 engine not found - installing via pip...");
-        let pip = if on_path("pip3") { "pip3" } else { "pip" };
-        let ok = run_and_stream(&app, pip, &["install", "--user", "maia3"]);
-        if !ok {
-            emit_log(
-                &app,
-                "!! pip install failed. Make sure Python 3 + pip are installed, \
-                 then run `pip install maia3` yourself (see the Maia-3 README).",
-            );
-        }
-    }
-
-    if status.stockfish_ready {
-        emit_log(&app, "Stockfish: already available.");
-    } else {
-        let _ = install_stockfish_impl(&app);
-    }
-
-    Ok(())
 }
 
 // ONNX backend: a throwaway torch venv exports the checkpoint once; a small onnxruntime venv then runs it via the bundled UCI script.
@@ -886,20 +926,34 @@ fn venv_pip(venv_dir: &Path) -> PathBuf {
     }
 }
 
-/// The runtime venv's python, not a system one, so PATH can't affect it.
-pub fn onnx_venv_python(app: &AppHandle) -> PathBuf {
-    onnx_runtime_venv_dir(app)
-        .map(|d| venv_python(&d))
-        .unwrap_or_default()
-}
-
 fn onnx_model_path(app: &AppHandle, model: &str) -> Result<PathBuf, String> {
     Ok(onnx_models_dir(app)?.join(format!("{model}.onnx")))
+}
+
+pub fn maia_model_source(app: &AppHandle, model: &str) -> Result<maia_core::ModelSource, String> {
+    if bundled_models().contains_key(model) {
+        return extract_bundled_model(app, model).map(maia_core::ModelSource::File);
+    }
+    let path = onnx_model_path(app, model)?;
+    if !path.is_file() {
+        return Err(format!("{model} isn't installed yet - install it from the Setup screen first"));
+    }
+    Ok(maia_core::ModelSource::File(path))
+}
+
+fn onnx_model_size(app: &AppHandle, model: &str) -> Option<u64> {
+    if let Some(&bytes) = bundled_models().get(model) {
+        return Some(bytes);
+    }
+    onnx_model_path(app, model).ok()?.metadata().ok().map(|m| m.len())
 }
 
 /// Deletes an exported model's .onnx file, freeing its disk space. A no-op (not an error) if it was never exported.
 #[tauri::command]
 pub fn remove_onnx_model(app: AppHandle, model: String) -> Result<(), String> {
+    if bundled_models().contains_key(&model) {
+        return Err(format!("{model} is part of the app and can't be removed"));
+    }
     let path = onnx_model_path(&app, &model)?;
     if path.is_file() {
         std::fs::remove_file(&path).map_err(|e| format!("could not remove {}: {e}", path.display()))?;
@@ -908,13 +962,11 @@ pub fn remove_onnx_model(app: AppHandle, model: String) -> Result<(), String> {
 }
 
 fn onnx_exported_models(app: &AppHandle) -> Vec<String> {
-    let Ok(dir) = onnx_models_dir(app) else {
-        return Vec::new();
-    };
-    let Ok(entries) = std::fs::read_dir(&dir) else {
-        return Vec::new();
-    };
-    entries
+    let mut models: Vec<String> = onnx_models_dir(app)
+        .ok()
+        .and_then(|dir| std::fs::read_dir(dir).ok())
+        .into_iter()
+        .flatten()
         .flatten()
         .filter_map(|e| {
             let path = e.path();
@@ -924,7 +976,13 @@ fn onnx_exported_models(app: &AppHandle) -> Vec<String> {
                 None
             }
         })
-        .collect()
+        .collect();
+    for id in bundled_models().keys() {
+        if !models.contains(id) {
+            models.push(id.clone());
+        }
+    }
+    models
 }
 
 /// Tauri's resolver, because the layout differs across dev, .deb and AppImage; MAIA3_RESOURCES_DIR overrides it for `tauri dev`.
@@ -954,62 +1012,62 @@ fn onnx_export_script(app: &AppHandle) -> Result<PathBuf, String> {
     resolve_resource(app, "export_maia3_onnx.py")
 }
 
-fn onnx_uci_script(app: &AppHandle) -> Result<PathBuf, String> {
-    resolve_resource(app, "maia3_onnx_uci.py")
+fn find_ort_in(dir: &Path) -> Option<PathBuf> {
+    let lib_name = |n: &str| {
+        if cfg!(windows) {
+            n == "onnxruntime.dll"
+        } else if cfg!(target_os = "macos") {
+            n.starts_with("libonnxruntime") && n.ends_with(".dylib") && !n.contains("providers")
+        } else {
+            n.starts_with("libonnxruntime.so")
+        }
+    };
+    let mut hits: Vec<PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .filter(|e| lib_name(&e.file_name().to_string_lossy()))
+        .map(|e| e.path())
+        .collect();
+    hits.sort();
+    hits.into_iter().next()
 }
 
-// a venv built under another runtime's python (e.g. after a Flatpak runtime bump) keeps its python3 but loses its site-packages
-fn onnx_venv_works(app: &AppHandle) -> bool {
-    let python = onnx_venv_python(app);
-    python.is_file()
-        && Command::new(&python)
-            .args([
-                "-c",
-                "import importlib.util as u,sys; sys.exit(0 if all(u.find_spec(m) for m in ('chess','numpy','onnxruntime')) else 1)",
-            ])
-            .no_window()
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
+/// The pip wheel is where we get libonnxruntime from; the runtime venv holds nothing else.
+fn venv_ort_library(venv_dir: &Path) -> Option<PathBuf> {
+    let site_packages: Vec<PathBuf> = if cfg!(windows) {
+        vec![venv_dir.join("Lib").join("site-packages")]
+    } else {
+        ["lib", "lib64"]
+            .iter()
+            .filter_map(|l| std::fs::read_dir(venv_dir.join(l)).ok())
+            .flatten()
+            .flatten()
+            .map(|e| e.path().join("site-packages"))
+            .collect()
+    };
+    site_packages
+        .iter()
+        .find_map(|sp| find_ort_in(&sp.join("onnxruntime").join("capi")))
 }
 
-pub fn onnx_engine_command(
-    app: &AppHandle,
-    model: &str,
-    mut extra_args: Vec<String>,
-) -> Result<(String, Vec<String>), String> {
-    let python = onnx_venv_python(app);
-    if !onnx_venv_works(app) {
-        return Err(
-            "the ONNX Runtime environment isn't set up yet - run ONNX setup first".into(),
-        );
-    }
-    let onnx_path = onnx_model_path(app, model)?;
-    if !onnx_path.is_file() {
-        return Err(format!(
-            "{model} hasn't been exported to ONNX yet - run ONNX setup for this model first"
-        ));
-    }
-    let script = onnx_uci_script(app)?;
-    if !script.is_file() {
-        return Err(format!(
-            "missing bundled resource: {}",
-            script.to_string_lossy()
-        ));
-    }
+pub fn onnx_runtime_ready(app: &AppHandle) -> bool {
+    cfg!(target_os = "android")
+        || std::env::var_os("ORT_DYLIB_PATH").is_some()
+        || onnx_runtime_venv_dir(app).ok().and_then(|d| venv_ort_library(&d)).is_some()
+}
 
-    let mut args = vec![
-        script.to_string_lossy().to_string(),
-        "--onnx".to_string(),
-        onnx_path.to_string_lossy().to_string(),
-        "--history".to_string(),
-        "8".to_string(),
-        "--use-uci-history".to_string(),
-    ];
-    args.append(&mut extra_args);
-    Ok((python.to_string_lossy().to_string(), args))
+/// Points ort at the pip-installed library unless the user already set ORT_DYLIB_PATH; must run before the first session is created.
+pub fn configure_ort(app: &AppHandle) -> Result<(), String> {
+    if cfg!(target_os = "android") || std::env::var_os("ORT_DYLIB_PATH").is_some() {
+        return Ok(());
+    }
+    let lib = onnx_runtime_venv_dir(app)
+        .ok()
+        .and_then(|d| venv_ort_library(&d))
+        .ok_or("ONNX Runtime isn't installed yet - run ONNX setup first")?;
+    // Only reached on first use (see the early return); ort reads the variable when it creates its first session.
+    unsafe { std::env::set_var("ORT_DYLIB_PATH", lib) };
+    Ok(())
 }
 
 /// A GUI-launched app's PATH is often minimal, so check the usual install dirs too.
@@ -1156,10 +1214,10 @@ fn run_onnx_setup_impl(app: &AppHandle, model: &str, progress: &mut Progress) ->
         prune_hf_cache(app);
     }
 
-    if onnx_venv_works(app) {
-        emit_log(app, "ONNX runtime venv: already set up, skipping.");
+    if onnx_runtime_ready(app) {
+        emit_log(app, "ONNX Runtime: already set up, skipping.");
     } else {
-        emit_log(app, "==> Setting up the ONNX Runtime venv (no torch here)...");
+        emit_log(app, "==> Installing ONNX Runtime...");
         let _ = std::fs::remove_dir_all(&runtime_venv);
         let python3 = find_python()
             .ok_or("Python 3 wasn't found - install python3 (with the venv module) and try again")?;
@@ -1174,7 +1232,7 @@ fn run_onnx_setup_impl(app: &AppHandle, model: &str, progress: &mut Progress) ->
         progress.advance();
 
         let pip = venv_pip(&runtime_venv);
-        if !pip_install(app, &pip, &["numpy", "python-chess", "onnxruntime"], None) {
+        if !pip_install(app, &pip, &["onnxruntime"], None) {
             let _ = std::fs::remove_dir_all(&runtime_venv);
             return Err("failed to install onnxruntime into the runtime venv".into());
         }
@@ -1187,8 +1245,15 @@ fn run_onnx_setup_impl(app: &AppHandle, model: &str, progress: &mut Progress) ->
 
 /// Only steps that will actually run are laid out, so skipped ones don't show up as phantom steps.
 pub fn run_onnx_setup(app: &AppHandle, model: &str) -> Result<(), String> {
+    if cfg!(target_os = "android") {
+        return if bundled_models().contains_key(model) {
+            Ok(())
+        } else {
+            Err(format!("{model} isn't bundled in this build"))
+        };
+    }
     let need_export = onnx_model_path(app, model).map(|p| !p.is_file()).unwrap_or(true);
-    let need_runtime = !onnx_venv_works(app);
+    let need_runtime = !onnx_runtime_ready(app);
 
     let mut plan: Vec<(String, f32)> = Vec::new();
     if need_export {

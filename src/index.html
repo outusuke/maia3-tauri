@@ -1,501 +1,377 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<title>Maia3 Chess</title>
-<style>
-  :root { color-scheme: dark; }
-  body {
-    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
-    align-items: center; gap: 1.5rem;
-    background: #16181d; color: #e7e9ee;
-    font: 15px/1.5 -apple-system, "Segoe UI", Inter, Helvetica, Arial, sans-serif;
-    padding: 2rem; box-sizing: border-box;
-  }
-  .page { width: min(680px, 100%); display: flex; flex-direction: column; gap: 1.5rem; }
-  .titleRow { display: flex; align-items: center; gap: 10px; margin-bottom: -0.75rem; }
-  .titleRow h1 { font-size: 1.4rem; margin: 0; }
-  p.sub { color: #9aa0ab; margin: 0; max-width: 34rem; }
-  section h2 { font-size: 1rem; margin: 0 0 2px; }
-  section p.desc { font-size: 0.82rem; color: #9aa0ab; margin: 0 0 12px; }
-
-  .modelGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
-  .card {
-    background: #1b1e24; border: 1px solid #2a2d35; border-radius: 12px;
-    padding: 14px 16px;
-  }
-  .modelCard { display: flex; flex-direction: column; }
-  .modelCard .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-  .modelCard .name { font-weight: 600; font-size: 0.95rem; margin: 0; }
-  .modelCard .kind { font-size: 0.78rem; color: #9aa0ab; margin: 2px 0 0; }
-  .badge { font-size: 0.7rem; padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
-  .badge.ready { background: #163a2a; color: #59d18a; }
-  .modelCard .meta { font-size: 0.76rem; color: #6c7280; margin: 10px 0 12px; }
-  .modelCard .useForPlay {
-    display: none; align-items: center; gap: 6px; font-size: 0.78rem; color: #9aa0ab;
-    margin: 0 0 10px; cursor: pointer;
-  }
-  .modelCard .useForPlay input { accent-color: #3b6ef2; margin: 0; }
-  .modelCard button { margin-top: auto; }
-
-  .stockfishCard { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .stockfishCard .info { display: flex; align-items: center; gap: 10px; }
-  .stockfishCard .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-  .stockfishCard .dot.ready { background: #59d18a; }
-  .stockfishCard .dot.notready { background: #6c7280; }
-  .stockfishCard .name { font-weight: 600; font-size: 0.9rem; margin: 0; }
-  .stockfishCard .meta { font-size: 0.78rem; color: #9aa0ab; margin: 2px 0 0; }
-
-  button {
-    background: #3b6ef2; color: white; border: none; border-radius: 8px;
-    padding: 0.55rem 1.1rem; font-size: 0.88rem; cursor: pointer;
-    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  }
-  button:disabled { opacity: 0.5; cursor: default; }
-  button.secondary { background: #2a2d35; color: #cfd3da; }
-  button.danger { background: #2a2d35; color: #f0a0a0; }
-  button.danger:hover:not(:disabled) { background: #3a2828; }
-  button.ghost { background: none; color: #9aa0ab; padding: 0.4rem 0.6rem; font-size: 0.8rem; }
-
-  .footer {
-    border-top: 1px solid #2a2d35; padding-top: 14px;
-    display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
-  }
-  .footer .diskUsage { font-size: 0.78rem; color: #6c7280; }
-  .footer .actions { display: flex; gap: 10px; }
-
-  pre#log {
-    width: 100%; box-sizing: border-box; height: 200px; overflow-y: auto;
-    background: #0e0f13; border: 1px solid #2a2d35; border-radius: 8px;
-    padding: 0.75rem; font-size: 0.78rem; color: #9aa0ab; white-space: pre-wrap; margin: 0;
-  }
-  #tasks { display: flex; flex-direction: column; gap: 10px; }
-  #tasks:empty { display: none; }
-  .task { background: #1b1e24; border: 1px solid #2a2d35; border-radius: 12px; padding: 12px 14px; }
-  .taskHead { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
-  .taskTitle { font-size: 0.85rem; font-weight: 600; }
-  .taskPct { font-size: 0.85rem; font-variant-numeric: tabular-nums; color: #cfd3da; }
-  .taskStep { font-size: 0.8rem; color: #9aa0ab; margin: 2px 0 8px; display: flex;
-    justify-content: space-between; gap: 12px; }
-  .taskStep .detail { color: #6c7280; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  .bar { position: relative; height: 8px; background: #0e0f13; border-radius: 99px; overflow: hidden; }
-  .bar .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: #3b6ef2;
-    border-radius: 99px; transition: width .25s ease; }
-  /* Animated stripes = "this step is working but can't report a number". */
-  .bar .active {
-    position: absolute; top: 0; bottom: 0; left: 0; width: 0;
-    background: repeating-linear-gradient(-45deg, #2c4a9a 0 8px, #3b6ef2 8px 16px);
-    background-size: 22.6px 22.6px; animation: barslide 0.8s linear infinite;
-    transition: left .25s ease, width .25s ease; opacity: .75;
-  }
-  .task.done .bar .fill { background: #59d18a; }
-  .task.failed .bar .fill { background: #e5534b; }
-  .task.done .bar .active, .task.failed .bar .active { display: none; }
-  @keyframes barslide { to { background-position: 22.6px 0; } }
-  .steps { list-style: none; margin: 10px 0 0; padding: 0; font-size: 0.78rem; color: #6c7280; }
-  .steps li { display: flex; gap: 8px; align-items: center; padding: 1px 0; }
-  .steps li .mark { width: 1em; text-align: center; flex: none; }
-  .steps li.done { color: #59d18a; }
-  .steps li.running { color: #e7e9ee; }
-  .steps li.failed { color: #e5534b; }
-  .spin { display: inline-block; width: .8em; height: .8em; border: 2px solid #3b6ef2;
-    border-right-color: transparent; border-radius: 50%; animation: spin .8s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .taskNote { font-size: 0.76rem; color: #6c7280; margin-top: 8px; }
-  .taskError { font-size: 0.78rem; color: #e5534b; margin-top: 8px; white-space: pre-wrap; }
-  details.logWrap summary { cursor: pointer; font-size: 0.8rem; color: #9aa0ab; margin-bottom: 6px; }
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Maia Chess</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<div class="page">
-  <div class="titleRow">
-    <h1>♞ Maia3 Chess</h1>
-  </div>
-  <p class="sub">
-    Play a local Maia-3 engine and, optionally, grade your games with Stockfish.
-    Maia-3 runs on ONNX Runtime — a light, fast-starting engine with no
-    PyTorch to install or keep around.
-  </p>
-
-  <section>
-    <h2>Maia-3 models</h2>
-    <p class="desc">Install any size you want to play against — each is independent, and the Play tab lets you pick between whichever ones you have.</p>
-    <div class="modelGrid" id="modelGrid"></div>
-  </section>
-
-  <section>
-    <h2>Stockfish</h2>
-    <p class="desc">Powers move grading on the Analyze / Practice tab. Optional — you can play against Maia-3 without it.</p>
-    <div class="card stockfishCard" id="stockfishCard">
-      <div class="info">
-        <span class="dot" id="stockfishDot"></span>
-        <div>
-          <p class="name" id="stockfishName">Checking…</p>
-          <p class="meta" id="stockfishMeta"></p>
-        </div>
+  <div id="app">
+    <header id="topbar">
+      <h1>maia<span>·3</span></h1>
+      <div class="tabBar" role="tablist" aria-label="Sections">
+        <button class="tabBtn active" id="tabBtnPlay" data-tab="play" role="tab">
+          <span class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18M12 3v18"/></svg></span>
+          <span class="tabLabel">Play</span>
+        </button>
+        <button class="tabBtn" id="tabBtnAnalyze" data-tab="analyze" role="tab">
+          <span class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg></span>
+          <span class="tabLabel">Review</span>
+        </button>
       </div>
-      <button id="stockfishBtn" class="secondary" disabled>…</button>
+      <div id="status-line">Set up a game to begin.</div>
+      <button type="button" id="new-game-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New game
+      </button>
+    </header>
+
+    <main>
+    <!-- Play tab -->
+    <div class="tabPanel active" id="playTab">
+      <section id="board-wrap" class="boardCol">
+        <div class="materialBar" id="materialTop"></div>
+        <div id="board" aria-label="chess board"></div>
+        <div class="materialBar" id="materialBottom"></div>
+        <div id="promo-picker" class="hidden">
+          <div class="promo-inner">
+            <button data-piece="q" class="promo-btn"><img class="promo-img" alt="queen" /></button>
+            <button data-piece="r" class="promo-btn"><img class="promo-img" alt="rook" /></button>
+            <button data-piece="b" class="promo-btn"><img class="promo-img" alt="bishop" /></button>
+            <button data-piece="n" class="promo-btn"><img class="promo-img" alt="knight" /></button>
+          </div>
+        </div>
+        <div id="board-controls">
+          <button id="flip-btn" title="Flip board (F)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3"/></svg><span>Flip</span></button>
+          <button id="resign-btn" title="Resign" class="danger"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg><span>Resign</span></button>
+          <button id="analyze-this-btn" title="Send this game to the Review tab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg><span>Review</span></button>
+        </div>
+        <div class="historyNotice" id="history-notice">
+          <span>Viewing a past position — moves are disabled.</span>
+          <button class="small" id="go-live-btn">Back to current</button>
+        </div>
+      </section>
+
+      <aside id="sidebarLeft" class="sideCol sideLeft">
+        <div class="panel collapsible" id="setup-panel">
+          <h2><span>New game</span><span id="setup-summary"></span></h2>
+
+          <div class="field">
+            <span class="fieldLabel">Play as</span>
+            <div class="segmented" id="side-select" role="radiogroup" aria-label="Play as">
+              <button type="button" role="radio" data-value="white" aria-checked="false">White</button>
+              <button type="button" role="radio" data-value="random" aria-checked="true" class="active">Random</button>
+              <button type="button" role="radio" data-value="black" aria-checked="false">Black</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="fieldLabel">Maia-3 model</span>
+            <div class="inlineRow" style="justify-content:space-between; align-items:center;">
+              <span id="active-model-name">Checking…</span>
+              <select id="model-select" hidden></select>
+            </div>
+            <p class="hint" id="no-model-hint" style="display:none; margin-top:6px;">
+              This build has no Maia-3 model bundled.
+            </p>
+          </div>
+
+          <div class="field" id="elo-field">
+            <label>Maia-3 Elo: <span id="elo-value">1500</span>
+              <input type="range" id="elo-slider" min="500" max="2500" step="50" value="1500" />
+            </label>
+            <p class="hint" id="elo-live-hint" style="display:none; margin-top:6px;">Changes apply immediately, mid-game.</p>
+          </div>
+
+          <details id="advanced-settings">
+            <summary id="advanced-summary">Advanced</summary>
+
+            <span class="fieldLabel">Move choice</span>
+
+            <div class="settingRow">
+              <div class="settingHead">
+                <span>Randomness (Temperature): <span id="temperature-value">0.5</span></span>
+                <button type="button" class="helpBtn" data-help="temperature" aria-label="About temperature">?</button>
+              </div>
+              <input type="range" id="temperature-slider" min="0" max="1.5" step="0.05" value="0.5" />
+            </div>
+
+            <div class="settingRow">
+              <div class="settingHead">
+                <span>Top-P: <span id="top-p-value">0.9</span></span>
+                <button type="button" class="helpBtn" data-help="topP" aria-label="About top-p">?</button>
+              </div>
+              <input type="range" id="top-p-slider" min="0.1" max="1" step="0.05" value="0.9" />
+            </div>
+
+            <span class="fieldLabel" style="margin-top:14px;">Opening</span>
+
+            <div class="settingRow">
+              <div class="settingHead">
+                <label class="checkRow"><input type="checkbox" id="opening-checkbox" checked /> Loose opening (first 4 moves)</label>
+                <button type="button" class="helpBtn" data-help="opening" aria-label="About loose opening">?</button>
+              </div>
+            </div>
+
+            <label>Start FEN
+              <div class="inlineRow">
+                <input type="text" id="start-fen-input" placeholder="Leave blank for the standard start position" style="flex:1; min-width:0; font-size:13px; padding:6px 8px; background:var(--panel-bg-2); color:var(--text); border:1px solid var(--border); border-radius:6px;">
+                <button class="small" id="clear-fen-btn" type="button">Standard</button>
+              </div>
+            </label>
+            <div id="fen-error" style="display:none; color:#ff8a8a; font-size:12px; margin:-8px 0 8px;"></div>
+            <div class="btnRow" style="margin-bottom:10px;">
+              <button class="small" id="open-setup-btn" type="button" style="width:100%;">Set Up Position on Board…</button>
+            </div>
+          </details>
+
+          <button id="start-btn" class="primary" title="Shortcut: N">Start game</button>
+          <p class="hint">Runs on ONNX Runtime. First use of a model size may take a moment to prepare.</p>
+        </div>
+      </aside>
+
+      <aside id="sidebar" class="sideCol">
+        <div class="panel" id="moves-panel">
+          <div class="inlineRow" style="justify-content:space-between; margin-bottom:6px;">
+            <h2 style="margin:0;">Moves</h2>
+            <div class="navBtns">
+              <button class="navBtn" id="nav-start" title="First move (Home)">|&laquo;</button>
+              <button class="navBtn" id="nav-prev" title="Previous move (←)">&laquo;</button>
+              <button class="navBtn" id="nav-next" title="Next move (→)">&raquo;</button>
+              <button class="navBtn" id="nav-end" title="Current position (End)">&raquo;|</button>
+            </div>
+          </div>
+          <div id="moves-meta"></div>
+          <ol id="move-list"></ol>
+          <div class="btnRow" style="margin-top:10px;">
+            <button class="small" id="undo-btn" title="Undo (U)">Undo</button>
+            <button class="small" id="copy-pgn-btn">Copy PGN</button>
+          </div>
+        </div>
+      </aside>
     </div>
-  </section>
 
-  <div id="tasks" aria-live="polite"></div>
+    <!-- Analyze tab -->
+    <div class="tabPanel" id="analyzeTab">
+      <section id="analyze-board-wrap" class="boardCol">
+        <div class="materialBar" id="aMaterialTop"></div>
+        <div id="analyzeBoard" aria-label="analysis board"></div>
+        <div class="materialBar" id="aMaterialBottom"></div>
+        <div id="analyzePromo" class="hidden">
+          <div class="promo-inner">
+            <button data-piece="q" class="promo-btn"><img class="promo-img" alt="queen" /></button>
+            <button data-piece="r" class="promo-btn"><img class="promo-img" alt="rook" /></button>
+            <button data-piece="b" class="promo-btn"><img class="promo-img" alt="bishop" /></button>
+            <button data-piece="n" class="promo-btn"><img class="promo-img" alt="knight" /></button>
+          </div>
+        </div>
+        <div class="btnRow" style="justify-content:center;">
+          <button class="small" id="aFlipBtn" title="Flip board (F)">⇅ Flip</button>
+          <label class="arrowToggle" title="Blue: engine's best move. Red: the move that was played, when it wasn't good. Right-click and drag on the board to draw your own arrows.">
+            <input type="checkbox" id="aArrowToggle" checked> Arrows
+          </label>
+        </div>
+        <div class="navBtns" id="boardNav">
+          <button class="navBtn" disabled data-nav="start" title="First move (Home)">|&laquo;</button>
+          <button class="navBtn" disabled data-nav="prev" title="Previous move (←)">&laquo;</button>
+          <button class="navBtn" disabled data-nav="next" title="Next move (→)">&raquo;</button>
+          <button class="navBtn" disabled data-nav="end" title="End of line (End)">&raquo;|</button>
+        </div>
+        <div id="variationBar" style="display:none;">
+          <div class="variationHead">
+            <span id="variationTitle"></span>
+            <button class="small" id="variationExitBtn" title="Return to the game position (Esc)">Back to game</button>
+          </div>
+          <div id="variationLine" class="lineMoves"></div>
+        </div>
+        <div class="panel" id="evalGraphBox" style="display:none;">
+          <div id="evalGraphWrap"><svg id="evalGraph"></svg></div>
+          <div id="evalInfo"></div>
+          <div id="evalLine" class="lineMoves"></div>
+          <div id="evalLegend"></div>
+        </div>
+      </section>
 
-  <details class="logWrap">
-    <summary>Details</summary>
-    <pre id="log"></pre>
-  </details>
+      <aside id="analyzeLeft" class="sideCol">
 
-  <div class="footer">
-    <span class="diskUsage" id="diskUsage"></span>
-    <div class="actions">
-      <button id="launchBtn" class="secondary">Launch</button>
+        <div class="panel collapsible" id="loadPanel">
+          <h2>Load a game</h2>
+          <div class="subRow">
+            <textarea id="pgnInput" rows="4" placeholder="Paste a PGN, or a plain movetext string like &#10;1. e4 e5 2. Nf3 Nc6 ..."></textarea>
+          </div>
+          <div class="btnRow">
+            <button id="loadGameBtn" class="primary" style="flex:1;">Load Game</button>
+          </div>
+          <div id="loadError" style="color:#ff8a8a; font-size:12.5px; margin-top:6px;"></div>
+        </div>
+
+        <div class="panel collapsible" id="analyzeControlsPanel">
+          <h2>Analyze</h2>
+          <div class="subRow">
+            <label for="analyzeSideSelect">Grade whose moves</label>
+            <select id="analyzeSideSelect">
+              <option value="both" selected>Both sides</option>
+              <option value="white">White only</option>
+              <option value="black">Black only</option>
+            </select>
+          </div>
+          <div class="subRow">
+            <label for="analyzeDepthSelect">Depth</label>
+            <select id="analyzeDepthSelect">
+              <option value="10">10 — fast</option>
+              <option value="14" selected>14 — balanced</option>
+              <option value="18">18 — thorough</option>
+            </select>
+          </div>
+          <button id="analyzeGameBtn" class="primary" disabled>Analyze Game</button>
+          <div id="analyzeStatus" class="hint" style="margin-top:8px;"></div>
+        </div>
+
+        <div class="panel listCollapsed" id="flaggedPanel" style="display:none;">
+          <h2 id="flaggedHeading"><span>Flagged moves <span id="flaggedCount" class="hint"></span></span></h2>
+          <div id="flaggedList"></div>
+          <div class="inlineRow" id="practiceSideRow" style="display:none; margin-top:10px;">
+            <label for="practiceSideSelect" style="font-size:12.5px; color:var(--muted);">Practice side</label>
+            <select id="practiceSideSelect">
+              <option value="both">Both</option>
+              <option value="white">White's mistakes</option>
+              <option value="black">Black's mistakes</option>
+            </select>
+          </div>
+          <button id="practiceBtn" class="primary" style="display:none; margin-top:8px;">Practice My Mistakes →</button>
+        </div>
+
+        <div class="panel" id="puzzlePanelV2">
+          <h2>Practice</h2>
+          <div id="puzzleProgressV2"></div>
+          <div id="puzzlePromptV2"></div>
+          <div id="puzzleFeedbackV2"></div>
+          <div class="btnRow" id="puzzleActiveActions">
+            <button class="small" id="puzzleBackBtn" style="display:none;">↩ Back to my puzzle</button>
+            <button class="small" id="puzzleRevealBtn">Reveal Answer</button>
+            <button class="small" id="puzzleNextBtn" style="display:none;">Next puzzle →</button>
+            <button class="small" id="puzzleExitBtn">Exit Practice</button>
+          </div>
+          <div class="btnRow" id="puzzleDoneActions" style="display:none;">
+            <button class="small" id="puzzleRestartBtn">Practice Again</button>
+            <button class="small" id="puzzleExitBtn2">Back to Review</button>
+          </div>
+        </div>
+
+        <div class="panel" id="moveListPanel" style="display:none;">
+          <div class="inlineRow" style="justify-content:space-between;">
+            <h2 style="margin:0;">Moves</h2>
+            <div class="navBtns">
+              <button class="navBtn" id="aNavStart" title="First move (Home)">|&laquo;</button>
+              <button class="navBtn" id="aNavPrev" title="Previous move (←)">&laquo;</button>
+              <button class="navBtn" id="aNavNext" title="Next move (→)">&raquo;</button>
+              <button class="navBtn" id="aNavEnd" title="Current / end position (End)">&raquo;|</button>
+            </div>
+          </div>
+          <div id="analyzeMoveList"></div>
+        </div>
+      </aside>
+
+      <aside id="analyzeSidebar" class="sideCol sideLeft">
+
+        <div class="panel" id="enginePanel">
+          <div class="engHead">
+            <label class="engSwitch" title="Stockfish evaluates the position on the board. Move pieces to try your own lines."><input type="checkbox" id="engEnable"> Engine</label>
+            <div class="engOpts">
+              <select id="engLines" title="Lines shown">
+                <option value="1">1 line</option>
+                <option value="2">2 lines</option>
+                <option value="3" selected>3 lines</option>
+              </select>
+            </div>
+          </div>
+          <div id="engNote" class="hint"></div>
+          <div id="engBody" style="display:none;">
+            <div class="engSummary">
+              <span id="engScore" class="engChip engScore">0.00</span>
+              <div class="engBar"><i id="engBarFill"></i></div>
+              <span id="engStatus" class="engStatus"></span>
+            </div>
+            <div id="engList"></div>
+            <label class="arrowToggle engFoot"><input type="checkbox" id="engArrows" checked> Arrows for each line on board</label>
+          </div>
+        </div>
+
+        <div class="panel" id="humanPanel" style="display:none;">
+          <h2>Human insights</h2>
+          <div class="inlineRow" style="justify-content:space-between;">
+            <label class="arrowToggle"><input type="checkbox" id="hiEnable"> Enable</label>
+            <select id="hiRating" title="Rating of the player Maia imitates"></select>
+          </div>
+          <div id="hiStatus" class="hint"></div>
+          <div id="hiBody" style="display:none;">
+            <div id="hiSummary"></div>
+            <div id="hiMeter"></div>
+            <div id="hiMeterLegend"></div>
+            <div id="hiMoves"></div>
+            <details id="hiChartBox">
+              <summary class="hiTitle">Moves by rating</summary>
+              <svg id="hiChart" viewBox="0 0 320 150"></svg>
+              <div id="hiChartLegend"></div>
+            </details>
+            <label class="arrowToggle" style="margin-top:8px;"><input type="checkbox" id="hiArrows" checked> <i class="hiSwatch"></i> Two likeliest human moves on board</label>
+          </div>
+
+          <h3 class="hiTitle">Rating estimate</h3>
+          <button class="small" id="hiEstimateBtn">Estimate from this game</button>
+          <div id="hiEstimateStatus" class="hint"></div>
+          <div id="hiEstimate" style="display:none;">
+            <div id="hiEstimateCards"></div>
+            <svg id="hiEstimateChart" viewBox="0 0 320 130"></svg>
+            <div id="hiEstimateLegend"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+    </main>
+  </div>
+
+  <!-- Position editor overlay -->
+  <div id="setup-overlay">
+    <div class="setupCard">
+      <h2>Set Up Position</h2>
+      <div class="tray" id="trayWhite"></div>
+      <div id="editor-board"></div>
+      <div class="tray" id="trayBlack"></div>
+      <div class="subRow" style="margin-top:6px;">
+        <label for="editorTurnSelect">Side to move</label>
+        <select id="editorTurnSelect">
+          <option value="w">White</option>
+          <option value="b">Black</option>
+        </select>
+      </div>
+      <div class="castleRow">
+        <label><input type="checkbox" id="castleWK" checked> White O-O</label>
+        <label><input type="checkbox" id="castleWQ" checked> White O-O-O</label>
+        <label><input type="checkbox" id="castleBK" checked> Black O-O</label>
+        <label><input type="checkbox" id="castleBQ" checked> Black O-O-O</label>
+      </div>
+      <div id="fenPreview"></div>
+      <div id="editorError"></div>
+      <p class="hint" style="margin:0 0 10px;">
+        Drag pieces from the trays onto the board, drag a board piece to move
+        it, or drag it off the board to remove it. Click a board piece to
+        remove it too.
+      </p>
+      <div class="btnRow">
+        <button class="small" id="editorStandardBtn" type="button">Standard Position</button>
+        <button class="small" id="editorClearBtn" type="button">Clear Board</button>
+      </div>
+      <div class="btnRow" style="margin-top:12px;">
+        <button id="editorApplyBtn" type="button">Use This Position</button>
+        <button class="small" id="editorCancelBtn" type="button">Cancel</button>
+      </div>
     </div>
   </div>
-</div>
 
-<script>
-  const { invoke } = window.__TAURI__.core;
-  const { listen } = window.__TAURI__.event;
+  <div id="help-toast" role="status" aria-live="polite"></div>
 
-  const MODELS = [
-    { id: "maia3-5m", name: "5M", kind: "Fast, CPU-friendly", approxSize: "~90 MB" },
-    { id: "maia3-23m", name: "23M", kind: "More accurate", approxSize: "~340 MB" },
-    { id: "maia3-79m", name: "79M", kind: "Most accurate, slower", approxSize: "~1.1 GB" },
-  ];
-
-  const modelGrid = document.getElementById("modelGrid");
-  const logEl = document.getElementById("log");
-  const launchBtn = document.getElementById("launchBtn");
-  const diskUsageEl = document.getElementById("diskUsage");
-  const sf = {
-    card: document.getElementById("stockfishCard"),
-    dot: document.getElementById("stockfishDot"),
-    name: document.getElementById("stockfishName"),
-    meta: document.getElementById("stockfishMeta"),
-    btn: document.getElementById("stockfishBtn"),
-  };
-
-  function fmtBytes(n) {
-    if (!n) return "";
-    if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-    if (n < 1024 * 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(0)} MB`;
-    return `${(n / (1024 * 1024 * 1024)).toFixed(2)} GB`;
-  }
-
-  function log(line) {
-    logEl.textContent += line + "\n";
-    logEl.scrollTop = logEl.scrollHeight;
-  }
-  listen("setup-log", (e) => log(e.payload));
-
-  // Only one install/remove runs at a time; every button disables while any of them is busy.
-  let busy = false;
-  const modelCards = {};
-
-  for (const model of MODELS) {
-    const card = document.createElement("div");
-    card.className = "card modelCard";
-    card.innerHTML = `
-      <div class="head">
-        <div>
-          <p class="name">${model.name}</p>
-          <p class="kind">${model.kind}</p>
-        </div>
-        <span class="badge ready" style="display:none;">Installed</span>
-      </div>
-      <p class="meta"></p>
-      <label class="useForPlay" style="display:none;">
-        <input type="radio" name="activeModel" value="${model.id}">
-        Use for play
-      </label>
-      <button></button>`;
-    modelGrid.appendChild(card);
-    modelCards[model.id] = {
-      root: card,
-      badge: card.querySelector(".badge"),
-      meta: card.querySelector(".meta"),
-      btn: card.querySelector("button"),
-      useLabel: card.querySelector(".useForPlay"),
-      useRadio: card.querySelector("input"),
-    };
-    modelCards[model.id].useRadio.addEventListener("change", () => setActiveModel(model.id));
-  }
-
-  // Wrapped since localStorage can throw (privacy mode, disabled storage); shouldn't take the screen down.
-  const activeModelStore = {
-    get() { try { return localStorage.getItem("maia3.activeModel"); } catch { return null; } },
-    set(v) { try { localStorage.setItem("maia3.activeModel", v); } catch {} },
-    clear() { try { localStorage.removeItem("maia3.activeModel"); } catch {} },
-  };
-
-  // Falls back to an installed model so this screen and the Play tab can't disagree about what's active.
-  function resolveActiveModel(readyIds) {
-    const stored = activeModelStore.get();
-    const active = (stored && readyIds.includes(stored)) ? stored : (readyIds[0] || null);
-    if (active) activeModelStore.set(active);
-    else activeModelStore.clear();
-    return active;
-  }
-
-  function setActiveModel(id) {
-    activeModelStore.set(id);
-    refreshStatus();
-  }
-
-  function renderModels(status) {
-    const active = resolveActiveModel(status.onnxModelsReady);
-    for (const model of MODELS) {
-      const ui = modelCards[model.id];
-      const ready = status.onnxModelsReady.includes(model.id);
-      const bytes = status.onnxModelBytes[model.id];
-      ui.badge.style.display = ready ? "" : "none";
-      ui.meta.textContent = ready
-        ? `${fmtBytes(bytes)} on disk`
-        : `Not installed · ${model.approxSize}`;
-      ui.btn.className = ready ? "danger" : "";
-      ui.btn.innerHTML = ready ? "Remove" : "Install";
-      ui.btn.disabled = busy;
-      ui.btn.onclick = () => (ready ? removeModel(model) : installModel(model));
-      ui.useLabel.style.display = ready ? "flex" : "none";
-      ui.useRadio.checked = ready && model.id === active;
-      ui.useRadio.disabled = busy;
-    }
-  }
-
-  function renderStockfish(status) {
-    sf.dot.className = "dot " + (status.stockfishReady ? "ready" : "notready");
-    if (status.stockfishReady) {
-      sf.name.textContent = "Installed";
-      sf.meta.textContent = status.stockfishIsDownloaded
-        ? `${fmtBytes(status.stockfishBytes)} on disk`
-        : `Found on this system (${status.stockfishPath})`;
-    } else if (status.flatpak) {
-      sf.name.textContent = "Not installed";
-      sf.meta.textContent = "Not visible inside this Flatpak sandbox — Install downloads a copy the app can use.";
-    } else {
-      sf.name.textContent = "Not installed";
-      sf.meta.textContent = "Not found on PATH or in the usual install locations.";
-    }
-    if (status.stockfishReady && status.stockfishIsDownloaded) {
-      sf.btn.className = "danger";
-      sf.btn.textContent = "Remove";
-      sf.btn.onclick = removeStockfish;
-    } else if (status.stockfishReady) {
-      // A system Stockfish is in use; nothing of ours to remove.
-      sf.btn.className = "secondary";
-      sf.btn.textContent = "In use";
-      sf.btn.onclick = null;
-    } else {
-      sf.btn.className = "";
-      sf.btn.textContent = "Install";
-      sf.btn.onclick = installStockfish;
-    }
-    sf.btn.disabled = busy || (status.stockfishReady && !status.stockfishIsDownloaded);
-  }
-
-  function renderDiskUsage(status) {
-    const total = Object.values(status.onnxModelBytes).reduce((a, b) => a + b, 0)
-      + (status.stockfishIsDownloaded ? status.stockfishBytes || 0 : 0);
-    diskUsageEl.textContent = total ? `${fmtBytes(total)} used on disk` : "";
-  }
-
-  async function refreshStatus() {
-    try {
-      const status = await invoke("setup_status");
-      renderModels(status);
-      renderStockfish(status);
-      renderDiskUsage(status);
-    } catch (err) {
-      log("!! Could not read setup status: " + err);
-    }
-  }
-
-  // Skip straight to the app once a model is ready; the gear icon's ?manual=1 opts back into this screen.
-  async function redirectIfAlreadySetUp() {
-    if (new URLSearchParams(location.search).has("manual")) return false;
-    try {
-      const status = await invoke("setup_status");
-      if (status.onnxModelsReady && status.onnxModelsReady.length > 0) {
-        window.location.replace("app.html");
-        return true;
-      }
-    } catch (err) {
-      // Fall through to showing the setup screen normally.
-    }
-    return false;
-  }
-
-  function setBusy(v) {
-    busy = v;
-    launchBtn.disabled = v;
-    refreshStatus();
-  }
-
-  async function installModel(model) {
-    setBusy(true);
-    log(`==> Installing Maia-3 (${model.id})...`);
-    try {
-      await invoke("run_onnx_setup", { model: model.id });
-      log(`Maia-3 (${model.id}): ready.`);
-    } catch (err) {
-      log(`!! Maia-3 (${model.id}) setup failed: ${err}`);
-    }
-    setBusy(false);
-  }
-
-  async function removeModel(model) {
-    if (!window.confirm(`Remove the ${model.name} model? You can reinstall it any time.`)) return;
-    setBusy(true);
-    log(`==> Removing Maia-3 (${model.id})...`);
-    try {
-      await invoke("remove_onnx_model", { model: model.id });
-      log(`Maia-3 (${model.id}): removed.`);
-    } catch (err) {
-      log(`!! Could not remove ${model.id}: ${err}`);
-    }
-    setBusy(false);
-  }
-
-  async function installStockfish() {
-    setBusy(true);
-    log("==> Installing Stockfish...");
-    try {
-      await invoke("install_stockfish");
-      log("Stockfish: ready.");
-    } catch (err) {
-      log("!! Stockfish setup failed: " + err);
-    }
-    setBusy(false);
-  }
-
-  async function removeStockfish() {
-    if (!window.confirm("Remove the downloaded Stockfish? You can reinstall it any time.")) return;
-    setBusy(true);
-    log("==> Removing Stockfish...");
-    try {
-      await invoke("remove_stockfish");
-      log("Stockfish: removed.");
-    } catch (err) {
-      log("!! Could not remove Stockfish: " + err);
-    }
-    setBusy(false);
-  }
-
-  // Steps that can't report a number show striped "working" bars plus a running clock, not a fake percentage.
-  const tasksEl = document.getElementById("tasks");
-  const TASK_TITLES = { maia: "Maia-3 engine", stockfish: "Stockfish" };
-  const taskUI = {};   // task id -> { root, ..., lastIndex, stepStart, startedAt, state }
-
-  function fmtClock(ms) {
-    const s = Math.max(0, Math.floor(ms / 1000));
-    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-  }
-
-  function ensureTaskUI(id) {
-    if (taskUI[id]) return taskUI[id];
-    const root = document.createElement("div");
-    root.className = "task";
-    root.innerHTML = `
-      <div class="taskHead"><span class="taskTitle"></span><span class="taskPct">0%</span></div>
-      <div class="taskStep"><span class="stepLabel"></span><span class="detail"></span></div>
-      <div class="bar"><div class="fill"></div><div class="active"></div></div>
-      <ul class="steps"></ul>
-      <div class="taskNote"></div>
-      <div class="taskError" hidden></div>`;
-    root.querySelector(".taskTitle").textContent = TASK_TITLES[id] || id;
-    tasksEl.appendChild(root);
-    const ui = {
-      root,
-      pct: root.querySelector(".taskPct"),
-      stepLabel: root.querySelector(".stepLabel"),
-      detail: root.querySelector(".detail"),
-      fill: root.querySelector(".fill"),
-      active: root.querySelector(".active"),
-      steps: root.querySelector(".steps"),
-      note: root.querySelector(".taskNote"),
-      error: root.querySelector(".taskError"),
-      lastIndex: -1, stepStart: Date.now(), startedAt: Date.now(), state: "running",
-    };
-    taskUI[id] = ui;
-    return ui;
-  }
-
-  function renderProgress(p) {
-    const ui = ensureTaskUI(p.task);
-    const total = p.weights.reduce((a, b) => a + b, 0) || 1;
-    const before = p.weights.slice(0, p.index).reduce((a, b) => a + b, 0);
-    const stepW = (p.weights[p.index] || 0);
-    const fillPct = Math.min(100, p.overall);
-
-    if (p.index !== ui.lastIndex) { ui.lastIndex = p.index; ui.stepStart = Date.now(); }
-    ui.state = p.state;
-    ui.root.classList.toggle("done", p.state === "done");
-    ui.root.classList.toggle("failed", p.state === "failed");
-
-    ui.fill.style.width = fillPct + "%";
-    const activeEnd = ((before + stepW) / total) * 100;
-    ui.active.style.left = fillPct + "%";
-    ui.active.style.width = p.state === "running" ? Math.max(0, activeEnd - fillPct) + "%" : "0";
-
-    ui.pct.textContent = Math.floor(fillPct) + "%";
-    ui.detail.textContent = p.detail && p.state !== "failed" ? p.detail : "";
-
-    if (p.state === "done") {
-      ui.stepLabel.textContent = "Done";
-    } else if (p.state === "failed") {
-      ui.stepLabel.textContent = `Failed at step ${p.index + 1} of ${p.steps.length}: ${p.steps[p.index] || ""}`;
-    } else {
-      ui.stepLabel.textContent = `Step ${p.index + 1} of ${p.steps.length}: ${p.steps[p.index]}`;
-    }
-
-    ui.steps.innerHTML = "";
-    p.steps.forEach((label, i) => {
-      const li = document.createElement("li");
-      let cls = "pending", mark = "○";
-      if (p.state === "done" || i < p.index) { cls = "done"; mark = "✓"; }
-      else if (i === p.index) {
-        if (p.state === "failed") { cls = "failed"; mark = "✕"; }
-        else { cls = "running"; mark = '<span class="spin"></span>'; }
-      }
-      li.className = cls;
-      li.innerHTML = `<span class="mark">${mark}</span><span></span>`;
-      li.lastChild.textContent = label;
-      ui.steps.appendChild(li);
-    });
-
-    if (p.state === "failed" && p.detail) {
-      ui.error.hidden = false;
-      ui.error.textContent = p.detail;
-    } else {
-      ui.error.hidden = true;
-    }
-    updateClocks();
-  }
-
-  function updateClocks() {
-    const now = Date.now();
-    for (const ui of Object.values(taskUI)) {
-      if (ui.state === "running") {
-        ui.note.textContent =
-          `Working… ${fmtClock(now - ui.stepStart)} on this step · ${fmtClock(now - ui.startedAt)} total. ` +
-          `Large downloads can sit at one step for a few minutes.`;
-      } else if (ui.state === "done") {
-        ui.note.textContent = `Finished in ${fmtClock(ui.finishedAfter ?? (now - ui.startedAt))}.`;
-        ui.finishedAfter = ui.finishedAfter ?? (now - ui.startedAt);
-      } else {
-        ui.note.textContent = "";
-      }
-    }
-  }
-  setInterval(updateClocks, 1000);
-  listen("setup-progress", (e) => renderProgress(e.payload));
-
-  launchBtn.addEventListener("click", () => {
-    // Same bundled frontend, so there's no server to start; just navigate.
-    window.location.replace("app.html");
-  });
-
-  redirectIfAlreadySetUp().then((redirected) => { if (!redirected) refreshStatus(); });
-</script>
+  <script src="main.js"></script>
 </body>
 </html>

@@ -2,20 +2,30 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Maia Chess</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="app">
     <header id="topbar">
-      <h1>♞ Maia Chess</h1>
-      <div class="tabBar">
-        <button class="tabBtn active" id="tabBtnPlay" data-tab="play">Play vs Maia3</button>
-        <button class="tabBtn" id="tabBtnAnalyze" data-tab="analyze">Analyze / Practice</button>
+      <h1>maia<span>·3</span></h1>
+      <div class="tabBar" role="tablist" aria-label="Sections">
+        <button class="tabBtn active" id="tabBtnPlay" data-tab="play" role="tab">
+          <span class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18M12 3v18"/></svg></span>
+          <span class="tabLabel">Play</span>
+        </button>
+        <button class="tabBtn" id="tabBtnAnalyze" data-tab="analyze" role="tab">
+          <span class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg></span>
+          <span class="tabLabel">Review</span>
+        </button>
       </div>
       <div id="status-line">Set up a game to begin.</div>
-      <a href="index.html?manual=1" id="setup-link" title="Setup / engine status">⚙</a>
+      <button type="button" id="new-game-btn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        New game
+      </button>
+      <a href="index.html?manual=1" id="setup-link" title="Setup / engine status" aria-label="Setup and engine status">⚙</a>
     </header>
 
     <main>
@@ -34,9 +44,9 @@
           </div>
         </div>
         <div id="board-controls">
-          <button id="flip-btn" title="Flip board (F)">⇅ Flip</button>
-          <button id="resign-btn" title="Resign">🏳 Resign</button>
-          <button id="analyze-this-btn" title="Send this game to the Analyze tab">🔍 Analyze This Game</button>
+          <button id="flip-btn" title="Flip board (F)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3"/></svg><span>Flip</span></button>
+          <button id="resign-btn" title="Resign" class="danger"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg><span>Resign</span></button>
+          <button id="analyze-this-btn" title="Send this game to the Review tab"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg><span>Review</span></button>
         </div>
         <div class="historyNotice" id="history-notice">
           <span>Viewing a past position — moves are disabled.</span>
@@ -61,7 +71,7 @@
             <span class="fieldLabel">Maia-3 model</span>
             <div class="inlineRow" style="justify-content:space-between; align-items:center;">
               <span id="active-model-name">Checking…</span>
-              <a href="index.html?manual=1" class="small">Change…</a>
+              <a href="index.html?manual=1" class="small" id="change-model-link">Change…</a>
             </div>
             <p class="hint" id="no-model-hint" style="display:none; margin-top:6px;">
               No Maia-3 model is installed. <a href="index.html?manual=1">Install one on the Setup screen</a> to play.
@@ -162,6 +172,12 @@
           <label class="arrowToggle" title="Blue: engine's best move. Red: the move that was played, when it wasn't good. Right-click and drag on the board to draw your own arrows.">
             <input type="checkbox" id="aArrowToggle" checked> Arrows
           </label>
+        </div>
+        <div class="navBtns" id="boardNav">
+          <button class="navBtn" disabled data-nav="start" title="First move (Home)">|&laquo;</button>
+          <button class="navBtn" disabled data-nav="prev" title="Previous move (←)">&laquo;</button>
+          <button class="navBtn" disabled data-nav="next" title="Next move (→)">&raquo;</button>
+          <button class="navBtn" disabled data-nav="end" title="End of line (End)">&raquo;|</button>
         </div>
         <div id="variationBar" style="display:none;">
           <div class="variationHead">
