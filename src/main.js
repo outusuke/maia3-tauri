@@ -577,6 +577,7 @@ const els = {
   sideSelect: document.getElementById("side-select"),
   activeModelName: document.getElementById("active-model-name"),
   noModelHint: document.getElementById("no-model-hint"),
+  modelSelect: document.getElementById("model-select"),
   eloSlider: document.getElementById("elo-slider"),
   eloValue: document.getElementById("elo-value"),
   eloLiveHint: document.getElementById("elo-live-hint"),
@@ -738,6 +739,10 @@ function updateAdvancedSummary() {
 els.startFenInput.addEventListener("input", updateAdvancedSummary);
 els.setupPanel.querySelector("h2").addEventListener("click", () => els.setupPanel.classList.toggle("collapsed"));
 els.analyzeThisBtn.addEventListener("click", sendGameToAnalyze);
+document.getElementById("new-game-btn").addEventListener("click", () => {
+  switchTab("play");
+  els.setupPanel.classList.remove("collapsed");
+});
 
 function hideFenError() { els.fenError.style.display = "none"; els.fenError.textContent = ""; }
 function showFenError(msg) {
@@ -746,10 +751,6 @@ function showFenError(msg) {
   els.advanced.open = true;
 }
 
-// Always ONNX; only the first-launch screen in index.html still touches the "maia3.backend" key.
-const ENGINE_BACKEND = "onnx";
-
-// Models are installed and chosen on the Setup screen now; this just formats the id for display.
 function modelLabel(model) {
   return model.replace("maia3-", "").toUpperCase();
 }
@@ -770,34 +771,38 @@ function syncStartButton() {
 async function refreshActiveModelUI() {
   let ready = [];
   try {
-    ready = (await invoke("setup_status")).onnxModelsReady || [];
+    ready = await invoke("list_models");
   } catch {
     ready = [];
   }
   const stored = activeModelStore.get();
-  // Falls back to an installed model if the stored choice was removed since the app last loaded.
   const active = (stored && ready.includes(stored)) ? stored : (ready[0] || null);
   if (active) activeModelStore.set(active);
 
   activeModelReady = !!active;
-  els.activeModelName.textContent = active ? modelLabel(active) : "None installed";
+  els.activeModelName.textContent = active ? modelLabel(active) : "None bundled";
   els.noModelHint.style.display = active ? "none" : "block";
+
+  const picker = els.modelSelect;
+  const fixedModel = ready.length <= 1;
+  picker.hidden = fixedModel;
+  els.activeModelName.hidden = !fixedModel;
+  els.activeModelName.classList.toggle("fixedModel", fixedModel);
+  picker.replaceChildren(...ready.map((id) => new Option(modelLabel(id), id, false, id === active)));
   syncStartButton();
 }
 
+els.modelSelect.addEventListener("change", () => {
+  activeModelStore.set(els.modelSelect.value);
+});
+
 function getActiveModel() {
   const model = activeModelStore.get();
-  if (!model) throw new Error("No Maia-3 model installed — install one on the Setup screen.");
+  if (!model) throw new Error("This build has no Maia-3 model bundled.");
   return model;
 }
 
 refreshActiveModelUI();
-
-async function listenSetupProgress(task, handler) {
-  return await listen("setup-progress", (e) => {
-    if (e.payload && e.payload.task === task) handler(e.payload);
-  });
-}
 
 function startLabel() {
   return gameStarted && !isGameOver() ? "Start new game" : "Start game";
@@ -806,7 +811,7 @@ function startLabel() {
 async function startGame() {
   els.startBtn.disabled = true;
   els.startBtn.textContent = "Loading model…";
-  setStatus("Starting Maia-3 — first run may need to download the checkpoint…");
+  setStatus("Starting Maia-3…");
 
   try {
     const fenInput = els.startFenInput.value.trim();
@@ -841,7 +846,6 @@ async function startGame() {
     await invoke("start_engine", {
       command: model,
       elo,
-      backend: ENGINE_BACKEND,
       extraArgs: [
         "--temperature", String(temperature),
         "--top-p", String(topP),
@@ -1133,9 +1137,18 @@ function renderMoveList() {
 
   // Keep the current move in view without scrolling anything outside the list.
   const cur = list.querySelector(".current");
-  if (!cur) { list.scrollTop = viewPly === 0 ? 0 : list.scrollHeight; return; }
+  const strip = getComputedStyle(list).display === "flex"; // phone layout lays the list out as one scrolling row
+  if (!cur) {
+    if (strip) list.scrollLeft = viewPly === 0 ? 0 : list.scrollWidth;
+    else list.scrollTop = viewPly === 0 ? 0 : list.scrollHeight;
+    return;
+  }
   const lr = list.getBoundingClientRect();
   const cr = cur.getBoundingClientRect();
+  if (strip) {
+    list.scrollLeft += cr.left - lr.left - (lr.width - cr.width) / 2;
+    return;
+  }
   if (cr.top < lr.top) list.scrollTop -= lr.top - cr.top;
   else if (cr.bottom > lr.bottom) list.scrollTop += cr.bottom - lr.bottom;
 }
@@ -1407,7 +1420,7 @@ const az = {
 };
 
 let loadedGame = null;      // {startFen, sans, fens}
-let analysis = null;        // Vec<MoveAnalysis> from analyze_pgn/analyze_moves
+let analysis = null;        // Vec<MoveAnalysis> from analyze_moves
 let azViewPly = 0;          // 0 = start position, i = after sans[i-1]
 let azFlipped = false;      // Analyze board orientation (true = Black at the bottom)
 let stockfishStarted = false;
@@ -2100,6 +2113,7 @@ function renderAnalyzeBoard() {
   az.navPrev.disabled = atStart;
   az.navNext.disabled = atEnd;
   az.navEnd.disabled = atEnd;
+  setBoardNav(atStart, atEnd);
   az.variationBar.style.display = variation ? "flex" : "none";
   syncLineHighlights();
   highlightCurrentMove();
@@ -2533,37 +2547,11 @@ az.loadBtn.addEventListener("click", async () => {
 async function ensureStockfish() {
   if (stockfishStarted) return true;
   try {
-    if (await invoke("stockfish_running")) {
-      stockfishStarted = true;
-      return true;
-    }
-
-    // No command passed: the backend finds Stockfish itself, since the bare name fails when launched from a desktop menu.
-    try {
-      await invoke("start_stockfish", {});
-    } catch (err) {
-      if (!String(err).startsWith("not-found:")) throw err;
-
-      // Not installed, or hidden by the Flatpak sandbox: download a private copy.
-      az.analyzeStatus.textContent =
-        "Stockfish wasn't found on this system — downloading a copy into the app's own folder…";
-      const stop = await listenSetupProgress("stockfish", (p) => {
-        az.analyzeStatus.textContent =
-          `Downloading Stockfish… ${Math.floor(p.overall)}%` + (p.detail ? ` (${p.detail})` : "");
-      });
-      try {
-        await invoke("install_stockfish");
-      } finally {
-        stop();
-      }
-      az.analyzeStatus.textContent = "Starting Stockfish…";
-      await invoke("start_stockfish", {});
-    }
+    if (!(await invoke("stockfish_running"))) await invoke("start_stockfish");
     stockfishStarted = true;
     return true;
   } catch (err) {
-    let msg = String(err).replace(/^not-found:\s*/, "");
-    az.analyzeStatus.textContent = "Stockfish isn't available: " + msg;
+    az.analyzeStatus.textContent = "Stockfish isn't available: " + err;
     return false;
   }
 }
@@ -3267,42 +3255,24 @@ function fillPuzzleFeedback(prefix, puzzle) {
   hint.className = "hint";
   hint.textContent = "Move pieces to explore other lines. Turn on the Engine panel to see what else was possible.";
   box.appendChild(hint);
-  box.appendChild(buildPuzzleNav());
   refreshPuzzleChips();
-  syncPuzzleNav();
 }
 
-function buildPuzzleNav() {
-  const nav = document.createElement("div");
-  nav.className = "navBtns puzzleNav";
-  const buttons = [
-    ["start", "|\u00ab", "First move (Home)"],
-    ["prev", "\u00ab", "Previous move (\u2190)"],
-    ["next", "\u00bb", "Next move (\u2192)"],
-    ["end", "\u00bb|", "End of line (End)"],
-  ];
-  for (const [where, label, title] of buttons) {
-    const btn = document.createElement("button");
-    btn.className = "navBtn";
-    btn.dataset.nav = where;
-    btn.textContent = label;
-    btn.title = title;
-    btn.addEventListener("click", () => goPuzzleLine(where));
-    nav.appendChild(btn);
-  }
-  return nav;
+for (const btn of document.querySelectorAll("#boardNav .navBtn")) {
+  btn.addEventListener("click", () => (puzzleMode ? goPuzzleLine(btn.dataset.nav) : azGo(btn.dataset.nav)));
 }
 
-function syncPuzzleNav() {
-  const puzzle = puzzles[puzzleIndex];
-  const nav = az.puzzleFeedback.querySelector(".puzzleNav");
-  if (!nav || !puzzle || !puzzleExp) return;
-  const atStart = puzzleViewIdx === 0;
-  const atEnd = puzzleViewIdx >= puzzleExp.ucis.length;
+function setBoardNav(atStart, atEnd) {
+  const nav = document.getElementById("boardNav");
   nav.querySelector('[data-nav="start"]').disabled = atStart;
   nav.querySelector('[data-nav="prev"]').disabled = atStart;
   nav.querySelector('[data-nav="next"]').disabled = atEnd;
   nav.querySelector('[data-nav="end"]').disabled = atEnd;
+}
+
+function syncPuzzleNav() {
+  const active = puzzleLocked && puzzleExp;
+  setBoardNav(!active || puzzleViewIdx === 0, !active || puzzleViewIdx >= puzzleExp.ucis.length);
 }
 
 // same as azGo(), but for the solution line shown once a puzzle is solved/revealed
@@ -3418,3 +3388,180 @@ function exitPuzzleMode() {
 }
 
 renderAnalyzeBoard();
+
+// ---- Session restore: Android can kill the app in the background, so keep enough to reopen where you left off ----
+const SESSION_KEY = "maia3.session.v1";
+let lastSavedSession = "";
+let sessionReady = false; // saving before the restore finishes would overwrite what is being restored
+
+function activeTabName() {
+  const btn = document.querySelector(".tabBtn.active");
+  return btn ? btn.dataset.tab : "play";
+}
+
+function snapshotSession() {
+  const live = gameStarted && !isGameOver();
+  return {
+    tab: activeTabName(),
+    settings: {
+      side: selectedSide(),
+      elo: els.eloSlider.value,
+      temperature: els.temperatureSlider.value,
+      topP: els.topPSlider.value,
+      opening: els.openingCheckbox.checked,
+    },
+    play: live ? {
+      startFen,
+      playerColor,
+      flipped,
+      model: activeModelStore.get(),
+      plies: posHistory.slice(1).map((p) => ({ fen: p.fen, lastMove: p.lastMove })),
+    } : null,
+    analyze: loadedGame ? {
+      game: loadedGame,
+      pgn: az.pgnInput.value,
+      side: az.sideSelect.value,
+      depthSelect: az.depthSelect.value,
+      practiceSide: az.practiceSideSelect.value,
+      analysis,
+      depth: analysisDepth,
+      viewPly: azViewPly,
+      flipped: azFlipped,
+      puzzle: puzzleMode ? { index: puzzleIndex, solved: puzzleSolved } : null,
+    } : null,
+  };
+}
+
+function saveSession() {
+  if (!sessionReady) return;
+  try {
+    const json = JSON.stringify(snapshotSession());
+    if (json === lastSavedSession) return;
+    localStorage.setItem(SESSION_KEY, json);
+    lastSavedSession = json;
+  } catch {}
+}
+
+function pieceAtSquare(fen, sq) {
+  const rows = fen.split(" ")[0].split("/");
+  const row = rows[8 - Number(sq[1])];
+  let file = 0;
+  for (const c of row) {
+    if (/\d/.test(c)) file += Number(c);
+    else { if (file === sq.charCodeAt(0) - 97) return c; file += 1; }
+  }
+  return null;
+}
+
+// The saved list only has from/to squares, so a promotion piece is read off the position after the move.
+function promotionFor(prevFen, ply) {
+  const [from, to] = ply.lastMove;
+  const mover = pieceAtSquare(prevFen, from);
+  if (!mover || mover.toLowerCase() !== "p" || (to[1] !== "8" && to[1] !== "1")) return null;
+  const promoted = pieceAtSquare(ply.fen, to);
+  return promoted ? promoted.toLowerCase() : null;
+}
+
+async function restorePlay(p) {
+  const model = p.model;
+  if (!model || !activeModelReady) return;
+  state = await invoke("new_game", { fen: p.startFen === STANDARD_FEN ? null : p.startFen });
+  startFen = p.startFen;
+  posHistory = [{ fen: state.fen, lastMove: null }];
+  let prevFen = state.fen;
+  for (const ply of p.plies) {
+    state = await invoke("make_move", {
+      from: ply.lastMove[0], to: ply.lastMove[1], promotion: promotionFor(prevFen, ply),
+    });
+    posHistory.push({ fen: state.fen, lastMove: state.lastMove });
+    prevFen = ply.fen;
+  }
+  viewPly = posHistory.length - 1;
+  playerColor = p.playerColor;
+  flipped = p.flipped;
+  if (isGameOver()) { renderPlayBoard(); renderMoveList(); return; }
+
+  const elo = parseInt(els.eloSlider.value, 10);
+  await invoke("start_engine", {
+    command: model,
+    elo,
+    extraArgs: [
+      "--temperature", els.temperatureSlider.value,
+      "--top-p", els.topPSlider.value,
+      "--opening-moves", String(posHistory.length > 8 || !els.openingCheckbox.checked ? 0 : 4),
+      "--seed", String((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0),
+    ],
+  });
+  gameStarted = true;
+  els.setupSummary.textContent = `${playerColor === "white" ? "White" : "Black"} · ${elo} · ${modelLabel(model)}`;
+  els.movesMeta.textContent = `You (${playerColor}) vs Maia-3 · ${elo} Elo`;
+  els.setupPanel.classList.add("collapsed");
+  els.eloLiveHint.style.display = "";
+  renderPlayBoard();
+  renderMoveList();
+  setStatus(statusBanner());
+  syncStartButton();
+  if (state.turn !== playerColor) await triggerEngineMove();
+}
+
+function restoreAnalyze(a) {
+  az.pgnInput.value = a.pgn || "";
+  loadAnalysisGame(a.game);
+  az.sideSelect.value = a.side;
+  az.depthSelect.value = a.depthSelect;
+  az.practiceSideSelect.value = a.practiceSide;
+  if (a.analysis) {
+    analysis = a.analysis;
+    analysisDepth = a.depth;
+    az.analyzeStatus.textContent = `Analyzed ${analysis.length} moves.`;
+    renderAnalyzeMoveList();
+    renderFlaggedList();
+    az.moveListPanel.style.display = "block";
+    az.flaggedPanel.style.display = "block";
+    az.controlsPanel.classList.add("collapsed");
+  }
+  azViewPly = Math.max(0, Math.min(a.viewPly, a.game.sans.length));
+  azFlipped = a.flipped;
+  drawEvalGraph();
+  renderAnalyzeBoard();
+  if (a.puzzle && analysis && puzzles.length > 0) {
+    enterPuzzleMode();
+    puzzleIndex = Math.min(a.puzzle.index, puzzles.length - 1);
+    puzzleSolved = a.puzzle.solved;
+    loadPuzzle();
+  }
+}
+
+async function restoreSession() {
+  let s;
+  try { s = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { s = null; }
+  if (!s) { sessionReady = true; return; }
+  lastSavedSession = JSON.stringify(s);
+  try {
+    const st = s.settings || {};
+    if (st.elo) { els.eloSlider.value = st.elo; els.eloValue.textContent = st.elo; }
+    if (st.temperature) { els.temperatureSlider.value = st.temperature; els.temperatureSlider.dispatchEvent(new Event("input")); }
+    if (st.topP) { els.topPSlider.value = st.topP; els.topPSlider.dispatchEvent(new Event("input")); }
+    if (typeof st.opening === "boolean") els.openingCheckbox.checked = st.opening;
+    if (st.side) els.sideSelect.querySelector(`button[data-value="${st.side}"]`)?.click();
+    if (s.analyze) restoreAnalyze(s.analyze);
+    if (s.tab) switchTab(s.tab);
+    await refreshActiveModelUI();
+    if (s.play) await restorePlay(s.play);
+  } catch (err) {
+    setStatus(`Could not restore the last session: ${err}`);
+  }
+  sessionReady = true;
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    saveSession();
+    invoke("suspend_engines").catch(() => {});
+  } else if (gameStarted && !isGameOver()) {
+    invoke("resume_engines").catch(() => {});
+  }
+});
+window.addEventListener("pagehide", saveSession);
+setInterval(saveSession, 5000);
+restoreSession();

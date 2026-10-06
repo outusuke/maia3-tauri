@@ -1,12 +1,15 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::{self, Receiver};
-use std::thread;
+use std::sync::mpsc::{Receiver, Sender};
 use std::time::{Duration, Instant};
 
-use crate::setup::NoWindow;
+#[cfg(target_os = "android")]
+use crate::native_stockfish::{self, NativeStockfish};
+#[cfg(not(target_os = "android"))]
+use crate::process_stockfish::{self, ProcessStockfish};
+use maia_core::ModelSource;
+#[cfg(not(target_os = "android"))]
+use std::path::Path;
 
 /// One `go depth N` result line. Scores are from the side to move's perspective.
 #[derive(Debug, Clone, Serialize)]
@@ -73,75 +76,70 @@ fn parse_info_line(line: &str) -> Option<PvLine> {
     }
 }
 
-/// Generic UCI client: Maia-3's console scripts speak plain UCI, same as Stockfish.
+enum Link {
+    Local(Sender<String>),
+    #[cfg(target_os = "android")]
+    Native(NativeStockfish),
+    #[cfg(not(target_os = "android"))]
+    Process(ProcessStockfish),
+}
+
+/// Maia-3 speaks plain UCI, same as Stockfish.
 pub struct Engine {
-    child: Child,
-    stdin: ChildStdin,
+    link: Link,
     rx: Receiver<String>,
 }
 
 impl Engine {
-    pub fn spawn(command: &str, args: &[String]) -> Result<Self, String> {
-        let mut child = Command::new(command)
-            .args(args)
-            .no_window()
-            .env("PYTHONUTF8", "1")
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            // A release build on Windows has no console, so there's no stderr to inherit.
-            .stderr(if cfg!(all(windows, not(debug_assertions))) {
-                Stdio::null()
-            } else {
-                Stdio::inherit()
-            })
-            .spawn()
-            .map_err(|e| format!("failed to launch '{command}': {e}"))?;
+    pub fn spawn_maia(model: ModelSource, args: &[String]) -> Result<Self, String> {
+        eprintln!("[engine] starting in-process Maia");
+        let (tx, rx) = maia_core::spawn_thread(model, args.to_vec())?;
+        Engine { link: Link::Local(tx), rx }.handshake()
+    }
 
-        eprintln!("[engine] started pid {}: {command}", child.id());
-        let stdin = child.stdin.take().ok_or("no stdin handle")?;
-        let stdout = child.stdout.take().ok_or("no stdout handle")?;
+    #[cfg(target_os = "android")]
+    pub fn spawn_native_stockfish() -> Result<Self, String> {
+        let (native, rx) = native_stockfish::start()?;
+        Engine { link: Link::Native(native), rx }.handshake()
+    }
 
-        let (tx, rx) = mpsc::channel::<String>();
-        thread::spawn(move || {
-            let reader = BufReader::new(stdout);
-            for line in reader.lines() {
-                match line {
-                    Ok(l) => {
-                        if tx.send(l).is_err() {
-                            break;
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-        });
-
-        let mut engine = Engine { child, stdin, rx };
-
-        engine.send("uci")?;
-        // Should answer before the checkpoint loads.
-        if engine.wait_for("uciok", Duration::from_secs(15)).is_none() {
-            return Err("engine did not respond to 'uci' (uciok not received)".into());
-        }
-
-        engine.send("isready")?;
-        // Slow: the checkpoint may need to download or load from disk on first use.
-        if engine
-            .wait_for("readyok", Duration::from_secs(180))
-            .is_none()
-        {
-            return Err(
-                "engine did not respond to 'isready' - it may still be downloading the model"
-                    .into(),
-            );
-        }
-
+    #[cfg(not(target_os = "android"))]
+    pub fn spawn_process_stockfish(path: &Path) -> Result<Self, String> {
+        let (process, rx) = process_stockfish::start(path)?;
+        let mut engine = Engine { link: Link::Process(process), rx }.handshake()?;
+        let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
+        engine.send(&format!("setoption name Threads value {}", (cores / 2).clamp(1, 8)))?;
+        engine.send("setoption name Hash value 128")?;
         Ok(engine)
     }
 
+    fn handshake(mut self) -> Result<Self, String> {
+        self.send("uci")?;
+        if self.wait_for("uciok", Duration::from_secs(30)).is_none() {
+            return Err("engine did not respond to 'uci' (uciok not received)".into());
+        }
+
+        self.send("isready")?;
+        // Loading the model can take a while.
+        if self.wait_for("readyok", Duration::from_secs(180)).is_none() {
+            return Err(
+                "engine did not respond to 'isready' - it may still be loading the model".into(),
+            );
+        }
+
+        Ok(self)
+    }
+
     pub fn send(&mut self, line: &str) -> Result<(), String> {
-        writeln!(self.stdin, "{line}").map_err(|e| e.to_string())?;
-        self.stdin.flush().map_err(|e| e.to_string())
+        match &mut self.link {
+            Link::Local(tx) => tx
+                .send(line.to_string())
+                .map_err(|_| "the Maia engine thread has stopped".to_string()),
+            #[cfg(target_os = "android")]
+            Link::Native(sf) => sf.write(line),
+            #[cfg(not(target_os = "android"))]
+            Link::Process(sf) => sf.write(line),
+        }
     }
 
     pub fn wait_for(&self, prefix: &str, timeout: Duration) -> Option<String> {
@@ -234,7 +232,7 @@ impl Engine {
         self.send(&format!("estimate {} {}", wanted.join(","), list.join(" ")))?;
         let line = self
             .wait_for("estimate ", timeout)
-            .ok_or("timed out waiting for the rating estimate (is the engine an older maia3_onnx_uci.py?)")?;
+            .ok_or("timed out waiting for the rating estimate (is the engine out of date?)")?;
         let parsed: EstimateReply = serde_json::from_str(&line["estimate ".len()..])
             .map_err(|e| format!("could not parse rating estimate: {e}"))?;
         Ok(parsed.plies)
@@ -271,7 +269,7 @@ impl Engine {
         Ok(result)
     }
 
-    /// Needs the `insights` command from our maia3_onnx_uci.py; sends the whole game so the 8-ply history is real.
+    /// Sends the whole game so the 8-ply history is real.
     pub fn maia_insights(
         &mut self,
         start_fen: &str,
@@ -284,7 +282,7 @@ impl Engine {
         self.send(&format!("insights {}", list.join(" ")))?;
         let line = self
             .wait_for("insights ", timeout)
-            .ok_or("timed out waiting for Maia insights (is the engine an older maia3_onnx_uci.py?)")?;
+            .ok_or("timed out waiting for Maia insights (is the engine out of date?)")?;
         serde_json::from_str(&line["insights ".len()..])
             .map_err(|e| format!("could not parse Maia insights: {e}"))
     }
@@ -312,11 +310,7 @@ pub struct MaiaInsights {
 
 impl Drop for Engine {
     fn drop(&mut self) {
-        eprintln!("[engine] stopping pid {}", self.child.id());
         let _ = self.send("quit");
-        std::thread::sleep(Duration::from_millis(50));
-        let _ = self.child.kill();
-        let _ = self.child.wait();
     }
 }
 

@@ -1,7 +1,7 @@
 app-id: dev.maiachess.MaiaChess
 # GNOME runtime rather than freedesktop because it ships WebKitGTK, which Tauri needs.
 runtime: org.gnome.Platform
-runtime-version: '50'
+runtime-version: '51'
 sdk: org.gnome.Sdk
 sdk-extensions:
   - org.freedesktop.Sdk.Extension.rust-stable
@@ -17,9 +17,7 @@ finish-args:
   - --socket=fallback-x11
   - --share=ipc
   - --device=dri
-  # The HF checkpoint is deleted after export and lands in Flatpak's private XDG_CACHE_HOME, so no host filesystem access is needed.
-  - --share=network
-  # No Tauri bundler here (plain cargo build), so nothing copies src-tauri/resources; setup.rs reads this override instead.
+  # plain cargo build skips the Tauri bundler, so bundled.rs looks here for the models, ONNX Runtime and Stockfish
   - --env=MAIA3_RESOURCES_DIR=/app/lib/maia-chess/resources
 
 modules:
@@ -37,11 +35,9 @@ modules:
           /app/share/applications/dev.maiachess.MaiaChess.desktop
       - install -Dm644 dev.maiachess.MaiaChess.metainfo.xml
           /app/share/metainfo/dev.maiachess.MaiaChess.metainfo.xml
-      # Installed by hand because plain cargo build doesn't bundle resources; MAIA3_RESOURCES_DIR points the GUI here.
-      - install -Dm644 src-tauri/resources/export_maia3_onnx.py
-          /app/lib/maia-chess/resources/export_maia3_onnx.py
-      - install -Dm644 src-tauri/resources/maia3_onnx_uci.py
-          /app/lib/maia-chess/resources/maia3_onnx_uci.py
+      - install -Dm644 -t /app/lib/maia-chess/resources/models src-tauri/resources/models/*.onnx
+      - install -Dm755 -t /app/lib/maia-chess/resources/ort src-tauri/resources/ort/libonnxruntime.so*
+      - install -Dm755 -t /app/lib/maia-chess/resources/stockfish src-tauri/resources/stockfish/stockfish
     sources:
       - type: dir
         path: .
