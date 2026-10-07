@@ -10,13 +10,6 @@ Chess app (Tauri v2 + Rust) for playing [Maia-3](https://github.com/CSSLab/maia3
 - **analyze** a PGN: Stockfish grades every move; "Engine" toggle for live eval
 - **practice**: mistakes become puzzles
 
-## rating estimate
-
-Analyze → **Estimate from this game** guesses each player's rating from their moves.
-
-It samples up to 20 moves per player (skipping the first 6 in long games and any forced moves) and asks Maia-3 how likely each played move is at 600, 1000, 1400, 1800, 2200 and 2600. The log-probabilities are summed per player, and the rating where the moves fit best is the estimate. The range shown is the 95% likelihood interval.
-
-It's a rough guide, not an official Elo: it assumes both players are rated the same, needs at least 6 non-forced moves per side, and only covers 600–2600 (`≤600` or `2600+` means "at the edge").
 
 ## prerequisites
 
