@@ -65,8 +65,6 @@ def main():
     for idx, (base, moves) in enumerate(cases):
         pos = f"position {base}" + (" moves " + " ".join(moves) if moves else "")
         script = ["uci", "isready", "setoption name Elo value 1500", pos, "go nodes 1", "insights " + " ".join(map(str, ELOS))]
-        if moves:
-            script.append("estimate " + ",".join(str(i) for i in range(len(moves))) + " " + " ".join(map(str, ELOS)))
         a, b = run(py, script), run(rs, script)
 
         ba, bb = pick(a, "bestmove"), pick(b, "bestmove")
@@ -94,18 +92,6 @@ def main():
             if abs(ja["winProb"][k] - jb["winProb"][k]) > 0.01:
                 mismatches += 1
                 print(f"[{idx}] winProb {ELOS[k]}: {ja['winProb'][k]} vs {jb['winProb'][k]}")
-
-        if moves:
-            ea = json.loads(pick(a, "estimate ")[0][len("estimate "):])["plies"]
-            eb = json.loads(pick(b, "estimate ")[0][len("estimate "):])["plies"]
-            if [e["ply"] for e in ea] != [e["ply"] for e in eb]:
-                mismatches += 1
-                print(f"[{idx}] estimate ply lists differ")
-            else:
-                for x, y in zip(ea, eb):
-                    if any(abs(u - v) > 0.02 for u, v in zip(x["logp"], y["logp"])):
-                        mismatches += 1
-                        print(f"[{idx}] estimate ply {x['ply']}: {x['logp']} vs {y['logp']}")
 
     print(f"{len(cases)} positions, {mismatches} mismatches, {soft} near-tie flips")
     return 1 if mismatches else 0

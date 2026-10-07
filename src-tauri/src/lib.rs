@@ -218,20 +218,6 @@ fn human_moves(
 }
 
 #[tauri::command(async)]
-fn maia_estimate(
-    app: AppHandle,
-    state: State<AppState>,
-    start_fen: String,
-    ucis: Vec<String>,
-    plies: Vec<usize>,
-    ratings: Vec<u32>,
-) -> Result<Vec<engine::PlyLogProbs>, String> {
-    let mut slot = insights_slot(&app, state.inner())?;
-    let maia = slot.as_mut().ok_or("Maia insights engine is not running")?;
-    maia.maia_estimate(&start_fen, &ucis, &plies, &ratings, std::time::Duration::from_secs(120))
-}
-
-#[tauri::command(async)]
 fn score_human_moves(
     state: State<AppState>,
     start_fen: String,
@@ -492,7 +478,6 @@ pub fn run() {
             start_insights_engine,
             human_moves,
             score_human_moves,
-            maia_estimate,
             set_engine_elo,
             suspend_engines,
             resume_engines,

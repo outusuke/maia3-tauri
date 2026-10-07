@@ -324,8 +324,6 @@ pub struct MaiaEngine {
     history: VecDeque<Vec<f32>>,
     pending_bestmove: Option<ChessMove>,
     pending_search: bool,
-    game_start: Board,
-    game_moves: Vec<String>,
 }
 
 fn parse_fen(fen: &str) -> Option<Board> {
@@ -377,8 +375,6 @@ impl MaiaEngine {
             history: VecDeque::new(),
             pending_bestmove: None,
             pending_search: false,
-            game_start: board,
-            game_moves: Vec::new(),
         };
         e.reset_history();
         Ok(e)
@@ -550,7 +546,6 @@ impl MaiaEngine {
         } else {
             Vec::new()
         };
-        let start_board = board;
         self.pending_bestmove = None;
         self.pending_search = false;
 
@@ -581,8 +576,6 @@ impl MaiaEngine {
         } else {
             self.reset_history();
         }
-        self.game_start = start_board;
-        self.game_moves = moves;
     }
 
     fn cmd_go(&mut self, line: &str, out: &mut dyn FnMut(String)) {
@@ -661,81 +654,6 @@ impl MaiaEngine {
         out(format!("insights {}", json!({"ratings": elos, "policies": policies, "winProb": win_prob})));
     }
 
-    fn cmd_estimate(&mut self, line: &str, out: &mut dyn FnMut(String)) {
-        // format: estimate <ply,ply,...> <elo> <elo>...
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        let parsed: Option<(Vec<usize>, Vec<u32>)> = (|| {
-            let wanted = parts
-                .get(1)?
-                .split(',')
-                .filter(|s| !s.is_empty())
-                .map(|s| s.parse().ok())
-                .collect::<Option<Vec<usize>>>()?;
-            let elos = parts[2..].iter().map(|s| s.parse().ok()).collect::<Option<Vec<u32>>>()?;
-            Some((wanted, elos))
-        })();
-        let (wanted, elos) = parsed.unwrap_or_default();
-        if elos.is_empty() {
-            out(format!("estimate {}", json!({"plies": []})));
-            return;
-        }
-
-        let mut boards: Vec<Board> = vec![self.game_start];
-        let mut toks: Vec<Vec<f32>> = vec![tokenize_board(&self.game_start)];
-        let mut cur = self.game_start;
-        for m in &self.game_moves {
-            let Ok(mv) = ChessMove::from_str(m) else { break };
-            if !cur.legal(mv) {
-                break;
-            }
-            cur = cur.make_move_new(mv);
-            boards.push(cur);
-            toks.push(tokenize_board(&cur));
-        }
-
-        let mut plies = Vec::new();
-        for &i in wanted.iter().filter(|w| **w < self.game_moves.len() && **w < boards.len() - 1) {
-            let b = &boards[i];
-            let legal = legal_moves(b);
-            if legal.len() < 2 {
-                continue;
-            }
-            let uci = if b.side_to_move() == Color::White {
-                self.game_moves[i].clone()
-            } else {
-                mirror_move(&self.game_moves[i])
-            };
-            let Some(played) = move_index(&uci) else { continue };
-            let Some(local) = legal.iter().position(|(idx, _)| *idx == played) else { continue };
-
-            let frames: Vec<&[f32]> = if self.use_uci_history {
-                toks[(i + 1).saturating_sub(self.history_len)..=i].iter().map(|v| v.as_slice()).collect()
-            } else {
-                vec![toks[i].as_slice()]
-            };
-            let tokens = self.tokens_from(&frames);
-
-            let mut logp = Vec::new();
-            for elo in &elos {
-                let e = *elo as f32;
-                let lm = match self.session.run(&tokens, e, e) {
-                    Ok((lm, _)) => lm,
-                    Err(err) => {
-                        out(format!("info string error: {err}"));
-                        out(format!("estimate {}", json!({"plies": []})));
-                        return;
-                    }
-                };
-                let legal_logits: Vec<f64> = legal.iter().map(|(idx, _)| lm[*idx] as f64).collect();
-                let peak = legal_logits.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-                let lse = peak + legal_logits.iter().map(|v| (v - peak).exp()).sum::<f64>().ln();
-                logp.push(round_to(legal_logits[local] - lse, 4));
-            }
-            plies.push(json!({"ply": i, "logp": logp}));
-        }
-        out(format!("estimate {}", json!({"plies": plies})));
-    }
-
     pub fn handle_line(&mut self, raw: &str, out: &mut dyn FnMut(String)) -> bool {
         let line = raw.trim();
         if line.is_empty() {
@@ -751,7 +669,6 @@ impl MaiaEngine {
             (_, "position") => self.cmd_position(line),
             (_, "go") => self.cmd_go(line, out),
             (_, "insights") => self.cmd_insights(line, out),
-            (_, "estimate") => self.cmd_estimate(line, out),
             (_, "setoption") => self.cmd_setoption(line),
             _ => {}
         }

@@ -217,27 +217,6 @@ impl Engine {
         self.read_search(timeout)
     }
 
-    /// Log-probability of the move actually played at each of `plies`, one entry per requested rating.
-    pub fn maia_estimate(
-        &mut self,
-        start_fen: &str,
-        moves: &[String],
-        plies: &[usize],
-        ratings: &[u32],
-        timeout: Duration,
-    ) -> Result<Vec<PlyLogProbs>, String> {
-        self.send(&position_command(start_fen, moves))?;
-        let list: Vec<String> = ratings.iter().map(|r| r.to_string()).collect();
-        let wanted: Vec<String> = plies.iter().map(|p| p.to_string()).collect();
-        self.send(&format!("estimate {} {}", wanted.join(","), list.join(" ")))?;
-        let line = self
-            .wait_for("estimate ", timeout)
-            .ok_or("timed out waiting for the rating estimate (is the engine out of date?)")?;
-        let parsed: EstimateReply = serde_json::from_str(&line["estimate ".len()..])
-            .map_err(|e| format!("could not parse rating estimate: {e}"))?;
-        Ok(parsed.plies)
-    }
-
     fn read_search(&mut self, timeout: Duration) -> Result<Vec<PvLine>, String> {
         let deadline = Instant::now() + timeout;
         let mut lines: HashMap<u32, PvLine> = HashMap::new();
@@ -286,17 +265,6 @@ impl Engine {
         serde_json::from_str(&line["insights ".len()..])
             .map_err(|e| format!("could not parse Maia insights: {e}"))
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PlyLogProbs {
-    pub ply: usize,
-    pub logp: Vec<f64>,
-}
-
-#[derive(Deserialize)]
-struct EstimateReply {
-    plies: Vec<PlyLogProbs>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
