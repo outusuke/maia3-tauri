@@ -1,4 +1,4 @@
-//! Rust port of maia3_onnx_uci.py, same text protocol. Runs Maia in-process on every platform.
+//! Runs Maia in-process on every platform, speaking a UCI-style text protocol.
 
 mod session;
 

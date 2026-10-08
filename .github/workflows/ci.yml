@@ -2,6 +2,8 @@ name: CI
 
 on:
   workflow_dispatch:
+  push:
+  pull_request:
 
 jobs:
   check:
@@ -22,16 +24,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
 
-      # no --locked: the committed Cargo.lock predates maia-core, ort and zip
       - name: Check the desktop app
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Test the desktop app
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
       - name: Test maia-core
-        run: cargo test --manifest-path src-tauri/maia-core/Cargo.toml
-
-      - name: Keep the regenerated lockfile
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: Cargo.lock
-          path: src-tauri/Cargo.lock
+        run: cargo test --locked --manifest-path src-tauri/maia-core/Cargo.toml

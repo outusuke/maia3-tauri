@@ -930,3 +930,15 @@ button.primary { min-height: 48px; border-radius: 12px; font-size: 15px; font-we
   .materialBar { min-height: 30px; }
   #moves-meta { display: none; }
 }
+
+@media (max-width: 700px) {
+  #analyzeTab.practicing #puzzleActiveActions,
+  #analyzeTab.practicing #puzzleDoneActions {
+    position: fixed; left: 0; right: 0; z-index: 20; margin: 0; box-sizing: border-box;
+    bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+    padding: 8px 10px; background: var(--bg); border-top: 1px solid var(--border);
+  }
+  #analyzeTab.practicing #puzzleActiveActions button,
+  #analyzeTab.practicing #puzzleDoneActions button { flex: 1; min-height: 44px; }
+  #analyzeTab.practicing #puzzlePanelV2 { padding-bottom: 72px; }
+}
