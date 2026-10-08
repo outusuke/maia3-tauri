@@ -861,14 +861,14 @@ button.primary { min-height: 48px; border-radius: 12px; font-size: 15px; font-we
 
   #board-controls {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
-    width: 100%; box-sizing: border-box; padding: 10px 12px 14px;
+    width: 100%; box-sizing: border-box; padding: 2px 12px 14px;
   }
   #board-controls button {
     height: 56px; padding: 0; border: 0; border-radius: 12px; background: var(--panel-bg);
     flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 12px; font-weight: 600;
   }
 
-  #analyze-board-wrap > .btnRow { padding: 10px 12px 12px; box-sizing: border-box; }
+  #analyze-board-wrap > .btnRow { padding: 2px 12px 12px; box-sizing: border-box; }
 
   /* Moves: one scrolling row between prev/next, like a notation ticker. */
   #moves-panel {
@@ -929,7 +929,7 @@ button.primary { min-height: 48px; border-radius: 12px; font-size: 15px; font-we
   :root { --cell: max(36px, min(9vh, 74px, calc((100vw - var(--rail-w) - 60px) / 8))); }
 }
 @media (max-width: 700px) {
-  .materialBar { min-height: 30px; }
+  .materialBar { min-height: 24px; }
   #moves-meta { display: none; }
 }
 
