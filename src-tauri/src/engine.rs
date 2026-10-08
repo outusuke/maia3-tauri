@@ -11,14 +11,14 @@ use maia_core::ModelSource;
 #[cfg(not(target_os = "android"))]
 use std::path::Path;
 
-/// One `go depth N` result line. Scores are from the side to move's perspective.
+// scores are from the side to move's perspective
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PvLine {
     pub multipv: u32,
     pub depth: u32,
     pub score_cp: Option<i32>,
-    /// Signed: positive means the side to move mates.
+    // positive: the side to move mates
     pub mate: Option<i32>,
     pub pv: Vec<String>,
 }
@@ -34,6 +34,7 @@ fn parse_info_line(line: &str) -> Option<PvLine> {
     let mut i = 0;
     while i < tokens.len() {
         match tokens[i] {
+            "lowerbound" | "upperbound" => return None,
             "multipv" => {
                 multipv = tokens.get(i + 1)?.parse().ok()?;
                 i += 2;
@@ -61,7 +62,7 @@ fn parse_info_line(line: &str) -> Option<PvLine> {
         }
     }
 
-    // Mated/stalemated positions come back as `depth 0` with a score but no pv.
+    // mated/stalemated positions report `depth 0` with a score and no pv
     let terminal = depth == 0 && (score_cp.is_some() || mate.is_some());
     if pv.is_empty() && !terminal {
         None
@@ -84,7 +85,6 @@ enum Link {
     Process(ProcessStockfish),
 }
 
-/// Maia-3 speaks plain UCI, same as Stockfish.
 pub struct Engine {
     link: Link,
     rx: Receiver<String>,
@@ -120,7 +120,7 @@ impl Engine {
         }
 
         self.send("isready")?;
-        // Loading the model can take a while.
+        // model load can be slow
         if self.wait_for("readyok", Duration::from_secs(180)).is_none() {
             return Err(
                 "engine did not respond to 'isready' - it may still be loading the model".into(),
@@ -160,19 +160,19 @@ impl Engine {
         }
     }
 
-    /// Elo applies to both sides; Maia-3 also has SelfElo and OppoElo options.
+    // sets Elo for both sides; Maia-3 also has separate SelfElo/OppoElo
     pub fn set_elo(&mut self, elo: u32) -> Result<(), String> {
         self.send(&format!("setoption name Elo value {elo}"))
     }
 
-    /// `go nodes 1` on purpose: Maia is a single forward pass, so a deeper search wouldn't change its move.
-    /// Takes the whole game, not just the current fen, so --use-uci-history has real moves to replay.
+    // nodes 1: Maia is one forward pass, search depth changes nothing; full move list feeds --use-uci-history
     pub fn best_move(&mut self, start_fen: &str, moves: &[String], timeout: Duration) -> Result<String, String> {
         self.send(&position_command(start_fen, moves))?;
         self.send("go nodes 1")?;
-        let line = self
-            .wait_for("bestmove", timeout)
-            .ok_or("timed out waiting for bestmove")?;
+        let Some(line) = self.wait_for("bestmove", timeout) else {
+            self.resync();
+            return Err("timed out waiting for bestmove".into());
+        };
         line.split_whitespace()
             .nth(1)
             .map(|s| s.to_string())
@@ -183,7 +183,6 @@ impl Engine {
         self.send(&format!("setoption name MultiPV value {n}"))
     }
 
-    /// Fixed-depth search for Stockfish-style engines; keeps the latest info line per multipv index until bestmove.
     pub fn analyze(
         &mut self,
         fen: &str,
@@ -197,7 +196,7 @@ impl Engine {
         self.read_search(timeout)
     }
 
-    /// `searchmoves` so a human-likely blunder still gets a real eval instead of dropping off a top-N list.
+    // searchmoves, so a likely human blunder still gets a real eval instead of falling off the top-N
     pub fn analyze_candidates(
         &mut self,
         fen: &str,
@@ -217,6 +216,13 @@ impl Engine {
         self.read_search(timeout)
     }
 
+    // a search that outlived its timeout would otherwise leave a stray `bestmove` for the next request to pick up
+    fn resync(&mut self) {
+        if self.send("stop").is_ok() && self.send("isready").is_ok() {
+            self.wait_for("readyok", Duration::from_secs(5));
+        }
+    }
+
     fn read_search(&mut self, timeout: Duration) -> Result<Vec<PvLine>, String> {
         let deadline = Instant::now() + timeout;
         let mut lines: HashMap<u32, PvLine> = HashMap::new();
@@ -224,6 +230,7 @@ impl Engine {
         loop {
             let now = Instant::now();
             if now >= deadline {
+                self.resync();
                 return Err("timed out waiting for analysis".into());
             }
             match self.rx.recv_timeout(deadline - now) {
@@ -236,7 +243,10 @@ impl Engine {
                         }
                     }
                 }
-                Err(_) => return Err("engine closed unexpectedly during analysis".into()),
+                Err(_) => {
+                    self.resync();
+                    return Err("engine closed unexpectedly during analysis".into());
+                }
             }
         }
 
@@ -248,7 +258,6 @@ impl Engine {
         Ok(result)
     }
 
-    /// Sends the whole game so the 8-ply history is real.
     pub fn maia_insights(
         &mut self,
         start_fen: &str,
@@ -282,7 +291,7 @@ impl Drop for Engine {
     }
 }
 
-/// The chess crate writes the en passant square as the pawn's square (d4); UCI engines want the target (d3) and ignore anything else.
+// the chess crate writes the ep square as the pawn's square (d4); UCI wants the target (d3)
 fn uci_fen(fen: &str) -> String {
     let mut fields: Vec<String> = fen.split_whitespace().map(String::from).collect();
     if fields.len() >= 4 && fields[3].len() == 2 {

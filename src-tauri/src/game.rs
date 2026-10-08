@@ -21,6 +21,7 @@ struct Snapshot {
     board: Board,
     last_move: Option<(Square, Square)>,
     repetitions: HashMap<String, u8>,
+    halfmove: u16,
 }
 
 pub struct Game {
@@ -29,8 +30,9 @@ pub struct Game {
     uci_moves: Vec<String>,
     san_history: Vec<String>,
     last_move: Option<(Square, Square)>,
-    /// Keyed on the FEN minus the move clocks, so repeated positions match.
     repetitions: HashMap<String, u8>,
+    /// `chess::Board` doesn't track the clock, so it lives here.
+    halfmove: u16,
     history: Vec<Snapshot>,
 }
 
@@ -46,6 +48,7 @@ impl Game {
             san_history: Vec::new(),
             last_move: None,
             repetitions,
+            halfmove: 0,
             history: Vec::new(),
         }
     }
@@ -53,6 +56,7 @@ impl Game {
     pub fn from_fen(fen: &str) -> Result<Self, String> {
         let fen = sanitize_castle_rights(fen);
         let board = Board::from_str(&fen).map_err(|e| format!("invalid FEN: {e}"))?;
+        let halfmove = fen.split_whitespace().nth(4).and_then(|s| s.parse().ok()).unwrap_or(0);
         let mut repetitions = HashMap::new();
         repetitions.insert(repetition_key(&board), 1);
         Ok(Game {
@@ -62,6 +66,7 @@ impl Game {
             san_history: Vec::new(),
             last_move: None,
             repetitions,
+            halfmove,
             history: Vec::new(),
         })
     }
@@ -86,8 +91,12 @@ impl Game {
             board: self.board.clone(),
             last_move: self.last_move,
             repetitions: self.repetitions.clone(),
+            halfmove: self.halfmove,
         });
         let san = move_to_san(&self.board, candidate);
+        let is_pawn = self.board.piece_on(from) == Some(Piece::Pawn);
+        let is_capture = self.board.piece_on(to).is_some() || (is_pawn && from.get_file() != to.get_file());
+        self.halfmove = if is_pawn || is_capture { 0 } else { self.halfmove.saturating_add(1) };
         self.board = self.board.make_move_new(candidate);
         self.uci_moves.push(candidate.to_string());
         self.san_history.push(san);
@@ -101,6 +110,7 @@ impl Game {
         self.board = snap.board;
         self.last_move = snap.last_move;
         self.repetitions = snap.repetitions;
+        self.halfmove = snap.halfmove;
         self.uci_moves.pop();
         self.san_history.pop();
         Ok(())
@@ -144,17 +154,10 @@ impl Game {
         let in_check = self.board.checkers().popcnt() > 0;
 
         let is_draw_by_repetition = self.repetitions.values().any(|&c| c >= 3);
-        let halfmove_clock: u16 = self
-            .fen()
-            .split_whitespace()
-            .nth(4)
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        let is_draw_by_fifty_move = halfmove_clock >= 100;
+        let is_draw_by_fifty_move = self.halfmove >= 100;
 
         let (status, winner) = match self.board.status() {
             BoardStatus::Checkmate => {
-                // side_to_move is the player who got mated.
                 let winner = match self.board.side_to_move() {
                     Color::White => "black",
                     Color::Black => "white",
@@ -189,7 +192,6 @@ impl Game {
     }
 }
 
-/// Free function so analysis.rs can reuse it on arbitrary positions without a full `Game`.
 pub fn move_to_san(board: &Board, mv: ChessMove) -> String {
     let from = mv.get_source();
     let to = mv.get_dest();
@@ -246,7 +248,6 @@ pub fn move_to_san(board: &Board, mv: ChessMove) -> String {
     with_check_suffix(board, mv, san)
 }
 
-/// Disambiguates by file, then rank, then both, only when another piece could reach the square.
 fn disambiguation(board: &Board, mv: ChessMove, piece: Piece) -> String {
     let from = mv.get_source();
     let to = mv.get_dest();
@@ -292,7 +293,6 @@ fn rank_char(sq: Square) -> char {
     (b'1' + sq.get_rank().to_index() as u8) as char
 }
 
-/// The FEN-based helpers below serve the puzzle board and setup preview, which never touch the live `Game`.
 pub fn scratch_legal_targets(fen: &str, from: Square) -> Result<Vec<String>, String> {
     let fen = sanitize_castle_rights(fen);
     let board = Board::from_str(&fen).map_err(|e| format!("invalid FEN: {e}"))?;
@@ -324,7 +324,7 @@ pub fn validate_fen(fen: &str) -> Result<(), String> {
     Board::from_str(&fen).map(|_| ()).map_err(|e| format!("invalid FEN: {e}"))
 }
 
-// Strip castling rights if the king moved; `chess` crate errors on stale flags instead of ignoring them
+// the chess crate rejects FENs with castling rights for a king that has moved
 fn sanitize_castle_rights(fen: &str) -> String {
     let mut fields: Vec<&str> = fen.split_whitespace().collect();
     if fields.len() < 3 || fields[2] == "-" {
@@ -333,10 +333,9 @@ fn sanitize_castle_rights(fen: &str) -> String {
 
     let ranks: Vec<&str> = fields[0].split('/').collect();
     if ranks.len() != 8 {
-        return fen.to_string(); // malformed placement; let Board::from_str raise the real error
+        return fen.to_string();
     }
 
-    // FEN ranks run 8 -> 1, so rank 8 (Black's back rank) is ranks[0], rank 1 (White's) is ranks[7].
     let king_on_e_file = |rank: &str, king_char: char| -> bool {
         let mut file = 0u8;
         for c in rank.chars() {
@@ -369,7 +368,7 @@ fn sanitize_castle_rights(fen: &str) -> String {
     fields.join(" ")
 }
 
-// The chess crate only reports mate/stalemate; without this Maia gets asked to move in dead positions and hangs.
+// the crate only reports mate/stalemate, and Maia hangs if asked to move in a dead position
 fn insufficient_material(board: &Board) -> bool {
     if board.pieces(Piece::Pawn).popcnt() > 0
         || board.pieces(Piece::Rook).popcnt() > 0
@@ -382,16 +381,57 @@ fn insufficient_material(board: &Board) -> bool {
     if knights + bishops.popcnt() <= 1 {
         return true;
     }
-    // K+B vs K+B only counts when the bishops share a square colour.
     let square_color = |sq: Square| (sq.get_file().to_index() + sq.get_rank().to_index()) % 2;
     knights == 0 && bishops.map(square_color).collect::<std::collections::HashSet<_>>().len() == 1
 }
 
-/// FEN without the move clocks: the fields that define a repeated position.
 fn repetition_key(board: &Board) -> String {
     let fen = format!("{board}");
     fen.split_whitespace()
         .take(4)
         .collect::<Vec<_>>()
         .join(" ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn play(game: &mut Game, uci: &str) {
+        game.try_move_uci(uci).unwrap();
+    }
+
+    #[test]
+    fn fifty_move_rule_draws_at_100_plies() {
+        let mut g = Game::from_fen("4k3/8/8/8/8/8/8/R3K3 w - - 98 80").unwrap();
+        play(&mut g, "a1a2");
+        assert_eq!(g.state().status, "ongoing");
+        play(&mut g, "e8d8");
+        assert_eq!(g.state().status, "draw");
+    }
+
+    #[test]
+    fn pawn_moves_and_captures_reset_the_clock() {
+        let mut g = Game::from_fen("4k3/8/8/3p4/4P3/8/8/R3K3 w - - 40 60").unwrap();
+        play(&mut g, "e4d5");
+        assert_eq!(g.halfmove, 0);
+        play(&mut g, "e8d7");
+        assert_eq!(g.halfmove, 1);
+    }
+
+    #[test]
+    fn undo_restores_the_clock() {
+        let mut g = Game::from_fen("4k3/8/8/8/8/8/8/R3K3 w - - 7 30").unwrap();
+        play(&mut g, "a1a2");
+        assert_eq!(g.halfmove, 8);
+        g.undo().unwrap();
+        assert_eq!(g.halfmove, 7);
+    }
+
+    #[test]
+    fn en_passant_counts_as_a_capture() {
+        let mut g = Game::from_fen("4k3/8/8/3pP3/8/8/8/4K3 w - d6 12 40").unwrap();
+        play(&mut g, "e5d6");
+        assert_eq!(g.halfmove, 0);
+    }
 }

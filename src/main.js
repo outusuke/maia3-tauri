@@ -919,7 +919,7 @@ async function triggerEngineMove() {
     renderPlayBoard();
     renderMoveList();
   } catch (err) {
-    setStatus(`Engine error: ${err}`);
+    if (!String(err).includes("game changed")) setStatus(`Engine error: ${err}`);
   } finally {
     engineBusy = false;
     updateControls();
@@ -953,6 +953,7 @@ async function attemptMove(from, to) {
   } catch (err) {
     clearSelection();
     renderPlayBoard();
+    setStatus(`Move rejected: ${err}`);
   }
 }
 
@@ -2420,7 +2421,9 @@ function renderAnalyzeMoveList() {
     const num = Math.floor(i / 2) + 1;
     const label = (i % 2 === 0) ? `${num}.` : `${num}...`;
     const left = document.createElement("span");
-    left.innerHTML = `<span class="gradeChip ${gradeClass(m.grade)}"></span>${label} ${m.san}`;
+    const chip = document.createElement("span");
+    chip.className = `gradeChip ${gradeClass(m.grade)}`;
+    left.append(chip, `${label} ${m.san}`);
     const right = document.createElement("span");
     right.className = gradeClass(m.grade);
     right.textContent = EVAL_GRADE_NAME[m.grade] ?? m.grade;
@@ -2473,8 +2476,13 @@ function renderFlaggedList() {
 
     const head = document.createElement("div");
     head.className = "head";
-    head.innerHTML = `<span class="sideTag ${mover}">${mover === "white" ? "White" : "Black"}</span> `
-      + `<span class="${gradeClass(m.grade)}">${label} ${m.san} (${m.grade})</span>`;
+    const tag = document.createElement("span");
+    tag.className = `sideTag ${mover}`;
+    tag.textContent = mover === "white" ? "White" : "Black";
+    const moveText = document.createElement("span");
+    moveText.className = gradeClass(m.grade);
+    moveText.textContent = `${label} ${m.san} (${m.grade})`;
+    head.append(tag, " ", moveText);
     div.appendChild(head);
 
     const better = document.createElement("div");

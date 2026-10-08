@@ -16,23 +16,24 @@ use engine::Engine;
 use game::{Game, GameState};
 use bundled::list_models;
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 
 struct AppState {
     game: Mutex<Game>,
+    // bumped under the game lock so a late engine move can tell the position moved on
+    generation: AtomicU64,
     engine: Mutex<Option<Engine>>,
     engine_spec: Mutex<Option<EngineSpec>>,
-    /// Separate from `engine` so a running game and an analysis don't fight over one subprocess.
+    // own processes, so Analyze doesn't disturb a game in progress
     stockfish: Mutex<Option<Engine>>,
-    /// Own Maia process so Analyze doesn't disturb a game in progress on the Play tab.
     insights: Mutex<Option<Engine>>,
     insights_model: Mutex<Option<String>>,
     insights_last_used: Mutex<Instant>,
 }
 
-/// What start_engine was given, so a suspended Maia can be rebuilt as it was.
 #[derive(Clone)]
 struct EngineSpec {
     model: String,
@@ -41,8 +42,9 @@ struct EngineSpec {
 }
 
 const INSIGHTS_IDLE: Duration = Duration::from_secs(120);
+const STALE_MOVE: &str = "game changed while the engine was thinking";
 
-// Weak on purpose: the weights get freed once both engines are gone
+// Weak so the weights are freed once both engines are gone
 type SessionCache = Mutex<Option<(String, usize, Weak<maia_core::Session>)>>;
 
 fn session_cache() -> &'static SessionCache {
@@ -51,7 +53,7 @@ fn session_cache() -> &'static SessionCache {
 }
 
 fn shared_session(app: &AppHandle, model: &str, history: usize) -> Result<Arc<maia_core::Session>, String> {
-    // lock stays held during the load so two spawns can't both load the model
+    // held through the load so two spawns can't both load the model
     let mut cache = session_cache().lock().map_err(|e| e.to_string())?;
     if let Some((name, hist, weak)) = cache.as_ref() {
         if name == model && *hist == history {
@@ -77,7 +79,7 @@ fn spawn_maia(app: &AppHandle, model: &str, extra_args: Vec<String>) -> Result<E
     Engine::spawn_maia(maia_core::ModelSource::Shared(session), &args)
 }
 
-// the idle reaper may have killed it, so respawn on demand
+// the idle reaper may have shut it down
 fn insights_slot<'a>(
     app: &AppHandle,
     state: &'a AppState,
@@ -109,7 +111,6 @@ fn revive_engine(app: &AppHandle, state: &AppState, slot: &mut Option<Engine>) -
     Ok(())
 }
 
-/// A finished game has no more use for the Maia process, so release it right away.
 fn release_engine_if_over(state: &AppState, gs: &GameState) {
     if gs.status != "ongoing" {
         if let Ok(mut spec) = state.engine_spec.lock() {
@@ -138,6 +139,7 @@ fn new_game(state: State<AppState>, fen: Option<String>) -> Result<GameState, St
         Some(f) if !f.trim().is_empty() => Game::from_fen(&f)?,
         _ => Game::new(),
     };
+    state.generation.fetch_add(1, Ordering::SeqCst);
     Ok(game.state())
 }
 
@@ -161,16 +163,16 @@ fn make_move(
     let gs = {
         let mut game = state.game.lock().map_err(|e| e.to_string())?;
         game.try_move(from_sq, to_sq, promo)?;
+        state.generation.fetch_add(1, Ordering::SeqCst);
         game.state()
     };
     release_engine_if_over(&state, &gs);
     Ok(gs)
 }
 
-// (async) moves slow commands off the UI thread; a plain sync command freezes the window until it returns.
-
-/// `command` is the model id.
+// a plain sync command runs on the UI thread, so anything that can wait on an engine lock is async
 #[tauri::command(async)]
+// `command` is the model id
 fn start_engine(
     app: AppHandle,
     state: State<AppState>,
@@ -233,28 +235,32 @@ fn score_human_moves(
 #[tauri::command]
 fn stop_engine(state: State<AppState>) -> Result<(), String> {
     *state.engine_spec.lock().map_err(|e| e.to_string())? = None;
-    let mut slot = state.engine.lock().map_err(|e| e.to_string())?;
-    *slot = None;
+    {
+        let _game = state.game.lock().map_err(|e| e.to_string())?;
+        state.generation.fetch_add(1, Ordering::SeqCst);
+    }
+    // a search in flight keeps the lock; its move is discarded and the next start_engine replaces it
+    if let Ok(mut slot) = state.engine.try_lock() {
+        *slot = None;
+    }
     Ok(())
 }
 
 #[tauri::command]
 fn set_engine_elo(state: State<AppState>, elo: u32) -> Result<(), String> {
-    let mut slot = state.engine.lock().map_err(|e| e.to_string())?;
     let mut spec = state.engine_spec.lock().map_err(|e| e.to_string())?;
-    if let Some(spec) = spec.as_mut() {
-        spec.elo = elo;
-        if slot.is_none() {
-            return Ok(());
+    let spec = spec.as_mut().ok_or("engine not running")?;
+    spec.elo = elo;
+    // mid-search the lock is taken; engine_move re-applies spec.elo before the next move
+    if let Ok(mut slot) = state.engine.try_lock() {
+        if let Some(eng) = slot.as_mut() {
+            eng.set_elo(elo)?;
         }
     }
-    match slot.as_mut() {
-        Some(eng) => eng.set_elo(elo),
-        None => Err("engine not running".into()),
-    }
+    Ok(())
 }
 
-/// try_lock so a search in flight is left alone; the weights are rebuilt on next use.
+// try_lock leaves a search in flight alone
 #[tauri::command]
 fn suspend_engines(state: State<AppState>) -> Result<(), String> {
     let has_spec = state.engine_spec.lock().map_err(|e| e.to_string())?.is_some();
@@ -277,21 +283,28 @@ fn resume_engines(app: AppHandle, state: State<AppState>) -> Result<(), String> 
 
 #[tauri::command(async)]
 fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, String> {
-    let (start_fen, moves) = {
+    let (start_fen, moves, generation) = {
         let game = state.game.lock().map_err(|e| e.to_string())?;
         let (start_fen, moves) = game.uci_history();
-        (start_fen.to_string(), moves.to_vec())
+        (start_fen.to_string(), moves.to_vec(), state.generation.load(Ordering::SeqCst))
     };
 
     let uci_move = {
         let mut slot = state.engine.lock().map_err(|e| e.to_string())?;
         revive_engine(&app, state.inner(), &mut slot)?;
+        let elo = state.engine_spec.lock().map_err(|e| e.to_string())?.as_ref().map(|s| s.elo);
         let eng = slot.as_mut().ok_or("engine not running")?;
+        if let Some(elo) = elo {
+            eng.set_elo(elo)?;
+        }
         eng.best_move(&start_fen, &moves, Duration::from_secs(30))?
     };
 
     let gs = {
         let mut game = state.game.lock().map_err(|e| e.to_string())?;
+        if state.generation.load(Ordering::SeqCst) != generation {
+            return Err(STALE_MOVE.into());
+        }
         game.try_move_uci(&uci_move)?;
         game.state()
     };
@@ -303,6 +316,7 @@ fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, Stri
 fn undo_move(state: State<AppState>) -> Result<GameState, String> {
     let mut game = state.game.lock().map_err(|e| e.to_string())?;
     game.undo()?;
+    state.generation.fetch_add(1, Ordering::SeqCst);
     Ok(game.state())
 }
 
@@ -440,6 +454,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             game: Mutex::new(Game::new()),
+            generation: AtomicU64::new(0),
             engine: Mutex::new(None),
             engine_spec: Mutex::new(None),
             stockfish: Mutex::new(None),
@@ -497,7 +512,6 @@ pub fn run() {
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 let state = app.state::<AppState>();
-                // engines quit when dropped
                 if let Ok(mut s) = state.engine.lock() { *s = None; };
                 if let Ok(mut s) = state.stockfish.lock() { *s = None; };
                 if let Ok(mut s) = state.insights.lock() { *s = None; };
