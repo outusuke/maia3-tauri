@@ -727,4 +727,4 @@ az.practiceSideSelect.addEventListener("change", () => {
   if (!puzzleMode) return;
   if (puzzles.length > 0) enterPuzzleMode(); else exitPuzzleMode();
 });
-az.practiceBtn.addEventListener("click", enterPuzzleMode);
+az.practiceBtn.addEventListener("click", () => enterPuzzleMode());
