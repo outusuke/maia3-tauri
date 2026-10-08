@@ -24,9 +24,6 @@ fn e2s<E: std::fmt::Display>(e: E) -> String {
 impl Session {
     /// Batch is pinned to 1; callers loop.
     pub fn load(source: &ModelSource, history: usize) -> Result<Self, String> {
-        if let ModelSource::Shared(_) = source {
-            return Err("a shared session is already loaded".into());
-        }
         let history_dim = 12 * history;
         // phones care more about peak RAM than a few ms per move
         let (opt_level, threads) = if cfg!(target_os = "android") {
@@ -57,7 +54,7 @@ impl Session {
             ModelSource::Bytes(bytes) => builder
                 .commit_from_memory(bytes)
                 .map_err(|e| format!("could not load the bundled model: {e}"))?,
-            ModelSource::Shared(_) => unreachable!(),
+            ModelSource::Shared(_) => return Err("a shared session is already loaded".into()),
         };
         Ok(Session {
             inner: Mutex::new(session),

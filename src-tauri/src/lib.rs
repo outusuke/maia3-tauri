@@ -17,10 +17,11 @@ use game::{Game, GameState};
 use bundled::list_models;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
 
+// a panic on one thread shouldn't brick every later command, so poisoned locks are recovered
 struct AppState {
     game: Mutex<Game>,
     // bumped under the game lock so a late engine move can tell the position moved on
@@ -54,7 +55,7 @@ fn session_cache() -> &'static SessionCache {
 
 fn shared_session(app: &AppHandle, model: &str, history: usize) -> Result<Arc<maia_core::Session>, String> {
     // held through the load so two spawns can't both load the model
-    let mut cache = session_cache().lock().map_err(|e| e.to_string())?;
+    let mut cache = session_cache().lock().unwrap_or_else(PoisonError::into_inner);
     if let Some((name, hist, weak)) = cache.as_ref() {
         if name == model && *hist == history {
             if let Some(session) = weak.upgrade() {
@@ -84,17 +85,16 @@ fn insights_slot<'a>(
     app: &AppHandle,
     state: &'a AppState,
 ) -> Result<MutexGuard<'a, Option<Engine>>, String> {
-    let mut slot = state.insights.lock().map_err(|e| e.to_string())?;
+    let mut slot = state.insights.lock().unwrap_or_else(PoisonError::into_inner);
     if slot.is_none() {
         let model = state
             .insights_model
-            .lock()
-            .map_err(|e| e.to_string())?
+            .lock().unwrap_or_else(PoisonError::into_inner)
             .clone()
             .ok_or("Maia insights engine is not running")?;
         *slot = Some(spawn_maia(app, &model, vec!["--threads".into(), "2".into()])?);
     }
-    *state.insights_last_used.lock().map_err(|e| e.to_string())? = Instant::now();
+    *state.insights_last_used.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
     Ok(slot)
 }
 
@@ -102,7 +102,7 @@ fn revive_engine(app: &AppHandle, state: &AppState, slot: &mut Option<Engine>) -
     if slot.is_some() {
         return Ok(());
     }
-    let spec = state.engine_spec.lock().map_err(|e| e.to_string())?.clone();
+    let spec = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner).clone();
     if let Some(spec) = spec {
         let mut eng = spawn_maia(app, &spec.model, spec.args)?;
         eng.set_elo(spec.elo)?;
@@ -134,7 +134,7 @@ fn parse_promotion(p: Option<String>) -> Option<Piece> {
 
 #[tauri::command]
 fn new_game(state: State<AppState>, fen: Option<String>) -> Result<GameState, String> {
-    let mut game = state.game.lock().map_err(|e| e.to_string())?;
+    let mut game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
     *game = match fen {
         Some(f) if !f.trim().is_empty() => Game::from_fen(&f)?,
         _ => Game::new(),
@@ -146,7 +146,7 @@ fn new_game(state: State<AppState>, fen: Option<String>) -> Result<GameState, St
 #[tauri::command]
 fn legal_targets(state: State<AppState>, square: String) -> Result<Vec<String>, String> {
     let sq = Square::from_str(&square).map_err(|e| e.to_string())?;
-    let game = state.game.lock().map_err(|e| e.to_string())?;
+    let game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
     Ok(game.legal_targets(sq))
 }
 
@@ -161,7 +161,7 @@ fn make_move(
     let to_sq = Square::from_str(&to).map_err(|e| e.to_string())?;
     let promo = parse_promotion(promotion);
     let gs = {
-        let mut game = state.game.lock().map_err(|e| e.to_string())?;
+        let mut game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
         game.try_move(from_sq, to_sq, promo)?;
         state.generation.fetch_add(1, Ordering::SeqCst);
         game.state()
@@ -180,7 +180,7 @@ fn start_engine(
     elo: u32,
     extra_args: Option<Vec<String>>,
 ) -> Result<(), String> {
-    let mut slot = state.engine.lock().map_err(|e| e.to_string())?;
+    let mut slot = state.engine.lock().unwrap_or_else(PoisonError::into_inner);
     // the old engine quits when dropped
     *slot = None;
 
@@ -188,7 +188,7 @@ fn start_engine(
     let mut eng = spawn_maia(&app, &command, extra_args.clone())?;
     eng.set_elo(elo)?;
     *slot = Some(eng);
-    *state.engine_spec.lock().map_err(|e| e.to_string())? =
+    *state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner) =
         Some(EngineSpec { model: command, elo, args: extra_args });
     Ok(())
 }
@@ -199,7 +199,7 @@ fn start_insights_engine(
     state: State<AppState>,
     command: String,
 ) -> Result<(), String> {
-    *state.insights_model.lock().map_err(|e| e.to_string())? = Some(command);
+    *state.insights_model.lock().unwrap_or_else(PoisonError::into_inner) = Some(command);
     drop(insights_slot(&app, state.inner())?);
     Ok(())
 }
@@ -227,16 +227,16 @@ fn score_human_moves(
     moves: Vec<String>,
     depth: Option<u32>,
 ) -> Result<insights::MoveScores, String> {
-    let mut slot = state.stockfish.lock().map_err(|e| e.to_string())?;
+    let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     let sf = slot.as_mut().ok_or("stockfish is not running")?;
     insights::score_moves(sf, &start_fen, &ucis, &moves, depth.unwrap_or(10))
 }
 
 #[tauri::command]
 fn stop_engine(state: State<AppState>) -> Result<(), String> {
-    *state.engine_spec.lock().map_err(|e| e.to_string())? = None;
+    *state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner) = None;
     {
-        let _game = state.game.lock().map_err(|e| e.to_string())?;
+        let _game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
         state.generation.fetch_add(1, Ordering::SeqCst);
     }
     // a search in flight keeps the lock; its move is discarded and the next start_engine replaces it
@@ -248,7 +248,7 @@ fn stop_engine(state: State<AppState>) -> Result<(), String> {
 
 #[tauri::command]
 fn set_engine_elo(state: State<AppState>, elo: u32) -> Result<(), String> {
-    let mut spec = state.engine_spec.lock().map_err(|e| e.to_string())?;
+    let mut spec = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner);
     let spec = spec.as_mut().ok_or("engine not running")?;
     spec.elo = elo;
     // mid-search the lock is taken; engine_move re-applies spec.elo before the next move
@@ -263,7 +263,7 @@ fn set_engine_elo(state: State<AppState>, elo: u32) -> Result<(), String> {
 // try_lock leaves a search in flight alone
 #[tauri::command]
 fn suspend_engines(state: State<AppState>) -> Result<(), String> {
-    let has_spec = state.engine_spec.lock().map_err(|e| e.to_string())?.is_some();
+    let has_spec = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner).is_some();
     if has_spec {
         if let Ok(mut slot) = state.engine.try_lock() {
             *slot = None;
@@ -277,22 +277,22 @@ fn suspend_engines(state: State<AppState>) -> Result<(), String> {
 
 #[tauri::command(async)]
 fn resume_engines(app: AppHandle, state: State<AppState>) -> Result<(), String> {
-    let mut slot = state.engine.lock().map_err(|e| e.to_string())?;
+    let mut slot = state.engine.lock().unwrap_or_else(PoisonError::into_inner);
     revive_engine(&app, state.inner(), &mut slot)
 }
 
 #[tauri::command(async)]
 fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, String> {
     let (start_fen, moves, generation) = {
-        let game = state.game.lock().map_err(|e| e.to_string())?;
+        let game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
         let (start_fen, moves) = game.uci_history();
         (start_fen.to_string(), moves.to_vec(), state.generation.load(Ordering::SeqCst))
     };
 
     let uci_move = {
-        let mut slot = state.engine.lock().map_err(|e| e.to_string())?;
+        let mut slot = state.engine.lock().unwrap_or_else(PoisonError::into_inner);
         revive_engine(&app, state.inner(), &mut slot)?;
-        let elo = state.engine_spec.lock().map_err(|e| e.to_string())?.as_ref().map(|s| s.elo);
+        let elo = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner).as_ref().map(|s| s.elo);
         let eng = slot.as_mut().ok_or("engine not running")?;
         if let Some(elo) = elo {
             eng.set_elo(elo)?;
@@ -301,7 +301,7 @@ fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, Stri
     };
 
     let gs = {
-        let mut game = state.game.lock().map_err(|e| e.to_string())?;
+        let mut game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
         if state.generation.load(Ordering::SeqCst) != generation {
             return Err(STALE_MOVE.into());
         }
@@ -314,7 +314,7 @@ fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, Stri
 
 #[tauri::command]
 fn undo_move(state: State<AppState>) -> Result<GameState, String> {
-    let mut game = state.game.lock().map_err(|e| e.to_string())?;
+    let mut game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
     game.undo()?;
     state.generation.fetch_add(1, Ordering::SeqCst);
     Ok(game.state())
@@ -324,7 +324,7 @@ fn undo_move(state: State<AppState>) -> Result<GameState, String> {
 fn start_stockfish(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     #[cfg(target_os = "android")]
     let _ = &app;
-    let mut slot = state.stockfish.lock().map_err(|e| e.to_string())?;
+    let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     *slot = None;
     #[cfg(target_os = "android")]
     let eng = Engine::spawn_native_stockfish()?;
@@ -336,7 +336,7 @@ fn start_stockfish(app: AppHandle, state: State<AppState>) -> Result<(), String>
 
 #[tauri::command]
 fn stockfish_running(state: State<AppState>) -> Result<bool, String> {
-    let slot = state.stockfish.lock().map_err(|e| e.to_string())?;
+    let slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     Ok(slot.is_some())
 }
 
@@ -363,7 +363,7 @@ fn engine_lines(
     let board = Board::from_str(&fen).map_err(|e| format!("invalid FEN: {e}"))?;
     let sign = if board.side_to_move() == chess::Color::White { 1 } else { -1 };
 
-    let mut slot = state.stockfish.lock().map_err(|e| e.to_string())?;
+    let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     let eng = slot.as_mut().ok_or("stockfish is not running")?;
     let mut lines = eng.analyze(&fen, depth, multipv.max(1), Duration::from_secs(60))?;
     lines.sort_by_key(|l| l.multipv);
@@ -406,7 +406,7 @@ fn analyze_moves(
         config.multipv = mpv.max(1);
     }
 
-    let mut slot = state.stockfish.lock().map_err(|e| e.to_string())?;
+    let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     let eng = slot.as_mut().ok_or("stockfish is not running")?;
     analysis::analyze_game(eng, &parsed, start_board, &config)
 }

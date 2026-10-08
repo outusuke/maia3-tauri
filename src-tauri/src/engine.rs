@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
 #[cfg(target_os = "android")]
@@ -243,8 +243,11 @@ impl Engine {
                         }
                     }
                 }
-                Err(_) => {
+                Err(RecvTimeoutError::Timeout) => {
                     self.resync();
+                    return Err("timed out waiting for analysis".into());
+                }
+                Err(RecvTimeoutError::Disconnected) => {
                     return Err("engine closed unexpectedly during analysis".into());
                 }
             }
