@@ -45,6 +45,19 @@ struct EngineSpec {
 const INSIGHTS_IDLE: Duration = Duration::from_secs(120);
 const STALE_MOVE: &str = "game changed while the engine was thinking";
 
+// the UI tops out at depth 18 and 5 lines; these only stop a bad value from hanging Stockfish
+const MAX_DEPTH: u32 = 30;
+const MAX_MULTIPV: u32 = 8;
+const MAX_PLIES: usize = 1024;
+const MAX_CANDIDATES: usize = 32;
+
+fn check_len(name: &str, len: usize, max: usize) -> Result<(), String> {
+    if len > max {
+        return Err(format!("too many {name} ({len}, max {max})"));
+    }
+    Ok(())
+}
+
 // Weak so the weights are freed once both engines are gone
 type SessionCache = Mutex<Option<(String, usize, Weak<maia_core::Session>)>>;
 
@@ -113,12 +126,8 @@ fn revive_engine(app: &AppHandle, state: &AppState, slot: &mut Option<Engine>) -
 
 fn release_engine_if_over(state: &AppState, gs: &GameState) {
     if gs.status != "ongoing" {
-        if let Ok(mut spec) = state.engine_spec.lock() {
-            *spec = None;
-        }
-        if let Ok(mut slot) = state.engine.lock() {
-            *slot = None;
-        }
+        *state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        *state.engine.lock().unwrap_or_else(PoisonError::into_inner) = None;
     }
 }
 
@@ -227,9 +236,12 @@ fn score_human_moves(
     moves: Vec<String>,
     depth: Option<u32>,
 ) -> Result<insights::MoveScores, String> {
+    check_len("moves", ucis.len(), MAX_PLIES)?;
+    check_len("candidates", moves.len(), MAX_CANDIDATES)?;
+    let depth = depth.unwrap_or(10).clamp(1, MAX_DEPTH);
     let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     let sf = slot.as_mut().ok_or("stockfish is not running")?;
-    insights::score_moves(sf, &start_fen, &ucis, &moves, depth.unwrap_or(10))
+    insights::score_moves(sf, &start_fen, &ucis, &moves, depth)
 }
 
 #[tauri::command]
@@ -334,7 +346,7 @@ fn start_stockfish(app: AppHandle, state: State<AppState>) -> Result<(), String>
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn stockfish_running(state: State<AppState>) -> Result<bool, String> {
     let slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     Ok(slot.is_some())
@@ -360,12 +372,14 @@ fn engine_lines(
     depth: u32,
     multipv: u32,
 ) -> Result<Vec<LiveLine>, String> {
+    let depth = depth.clamp(1, MAX_DEPTH);
+    let multipv = multipv.clamp(1, MAX_MULTIPV);
     let board = Board::from_str(&fen).map_err(|e| format!("invalid FEN: {e}"))?;
     let sign = if board.side_to_move() == chess::Color::White { 1 } else { -1 };
 
     let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     let eng = slot.as_mut().ok_or("stockfish is not running")?;
-    let mut lines = eng.analyze(&fen, depth, multipv.max(1), Duration::from_secs(60))?;
+    let mut lines = eng.analyze(&fen, depth, multipv, Duration::from_secs(60))?;
     lines.sort_by_key(|l| l.multipv);
 
     Ok(lines
@@ -394,16 +408,17 @@ fn analyze_moves(
     depth: Option<u32>,
     multipv: Option<u32>,
 ) -> Result<Vec<MoveAnalysis>, String> {
+    check_len("moves", sans.len(), MAX_PLIES)?;
     let parsed = pgn::parse_sans(&sans, start_fen.as_deref())?;
     let start_board =
         Board::from_str(&parsed.start_fen).map_err(|e| format!("invalid start FEN: {e}"))?;
 
     let mut config = AnalysisConfig::default();
     if let Some(d) = depth {
-        config.depth = d;
+        config.depth = d.clamp(1, MAX_DEPTH);
     }
     if let Some(mpv) = multipv {
-        config.multipv = mpv.max(1);
+        config.multipv = mpv.clamp(1, MAX_MULTIPV);
     }
 
     let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
@@ -470,8 +485,9 @@ pub fn run() {
                 let idle = state
                     .insights_last_used
                     .lock()
-                    .map(|t| t.elapsed() > INSIGHTS_IDLE)
-                    .unwrap_or(false);
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .elapsed()
+                    > INSIGHTS_IDLE;
                 if idle {
                     if let Ok(mut slot) = state.insights.try_lock() {
                         if slot.is_some() {
@@ -512,9 +528,9 @@ pub fn run() {
         .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
                 let state = app.state::<AppState>();
-                if let Ok(mut s) = state.engine.lock() { *s = None; };
-                if let Ok(mut s) = state.stockfish.lock() { *s = None; };
-                if let Ok(mut s) = state.insights.lock() { *s = None; };
+                *state.engine.lock().unwrap_or_else(PoisonError::into_inner) = None;
+                *state.stockfish.lock().unwrap_or_else(PoisonError::into_inner) = None;
+                *state.insights.lock().unwrap_or_else(PoisonError::into_inner) = None;
             }
         });
 }
