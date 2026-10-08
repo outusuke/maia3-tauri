@@ -570,6 +570,17 @@ button.small:disabled { opacity: 0.5; cursor: default; }
 }
 .materialGroup img:last-child { margin-right: 0; }
 .materialLead { margin-left: 3px; }
+.pName { display: none; }
+.pDot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--muted); flex: none; }
+.pDot.white { background: #f2f2f2; }
+.pDot.black { background: #2a2a2a; }
+/* display: contents keeps the desktop layout as it was */
+#boardActions { display: contents; }
+/* --pp (0..1) is set in puzzles.js */
+#puzzleProgressV2::after {
+  content: ""; display: block; height: 4px; margin-top: 8px; border-radius: 2px;
+  background: linear-gradient(var(--accent), var(--accent)) 0 0 / calc(var(--pp, 0) * 100%) 100% no-repeat, var(--border);
+}
 
 #puzzlePanelV2 { display: none; }
 #puzzlePanelV2.show { display: block; }
@@ -861,14 +872,23 @@ button.primary { min-height: 48px; border-radius: 12px; font-size: 15px; font-we
 
   #board-controls {
     display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;
-    width: 100%; box-sizing: border-box; padding: 2px 12px 14px;
+    width: 100%; box-sizing: border-box; padding: 2px 12px 12px;
   }
   #board-controls button {
-    height: 56px; padding: 0; border: 0; border-radius: 12px; background: var(--panel-bg);
-    flex-direction: column; align-items: center; justify-content: center; gap: 3px; font-size: 12px; font-weight: 600;
+    height: 48px; padding: 0; border: 0; border-radius: 12px; background: var(--panel-bg);
+    flex-direction: row; align-items: center; justify-content: center; gap: 8px; font-size: 13px; font-weight: 600;
   }
 
-  #analyze-board-wrap > .btnRow { padding: 2px 12px 12px; box-sizing: border-box; }
+  .pName { display: inline-flex; align-items: center; gap: 7px; margin-right: 10px; color: var(--text); font-size: 13px; font-weight: 600; }
+
+  #boardActions {
+    display: flex; align-items: center; gap: 8px; width: 100%; box-sizing: border-box; padding: 2px 12px 10px;
+  }
+  #boardActions > .btnRow { display: contents; }
+  #boardActions #aFlipBtn { order: 0; flex: none; min-height: 44px; padding: 0 12px; font-size: 13px; border-radius: 10px; }
+  #boardActions #boardNav { order: 1; flex: 1; min-width: 0; width: auto; max-width: none; padding: 0; }
+  #boardActions #boardNav .navBtn { padding: 0; border-radius: 10px; }
+  #boardActions .arrowToggle { order: 2; flex: none; min-height: 44px; font-size: 13px; white-space: nowrap; }
 
   /* Moves: one scrolling row between prev/next, like a notation ticker. */
   #moves-panel {
@@ -929,7 +949,7 @@ button.primary { min-height: 48px; border-radius: 12px; font-size: 15px; font-we
   :root { --cell: max(36px, min(9vh, 74px, calc((100vw - var(--rail-w) - 60px) / 8))); }
 }
 @media (max-width: 700px) {
-  .materialBar { min-height: 24px; }
+  .materialBar { min-height: 34px; }
   #moves-meta { display: none; }
 }
 
@@ -942,5 +962,8 @@ button.primary { min-height: 48px; border-radius: 12px; font-size: 15px; font-we
   }
   #analyzeTab.practicing #puzzleActiveActions button,
   #analyzeTab.practicing #puzzleDoneActions button { flex: 1; min-height: 44px; }
-  #analyzeTab.practicing #puzzlePanelV2 { padding-bottom: 72px; }
+  #analyzeTab.practicing #puzzleActiveActions #puzzleRevealBtn {
+    flex: 1.6; background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+  }
+  #analyzeTab.practicing { padding-bottom: 72px; } /* room for the fixed action bar */
 }

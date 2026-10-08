@@ -362,21 +362,29 @@ function materialInfo(fen) {
   return { capturedByWhite, capturedByBlack, diff };
 }
 
-function renderMaterialSide(el, pieces, lead) {
-  const key = pieces.join("") + "|" + lead;
+function renderMaterialSide(el, pieces, lead, side) {
+  const key = pieces.join("") + "|" + lead + "|" + side;
   if (el._materialKey === key) return;
   el._materialKey = key;
   el.textContent = "";
-  if (pieces.length === 0 && !lead) return;
-  const group = document.createElement("span");
-  group.className = "materialGroup";
-  for (const p of pieces) {
-    const img = document.createElement("img");
-    img.src = pieceImageSrc(p);
-    img.alt = p;
-    group.appendChild(img);
+  // only visible on phones (.pName in style.css)
+  const name = document.createElement("span");
+  name.className = "pName";
+  const dot = document.createElement("i");
+  dot.className = `pDot ${side}`;
+  name.append(dot, side === "white" ? "White" : "Black");
+  el.appendChild(name);
+  if (pieces.length > 0) {
+    const group = document.createElement("span");
+    group.className = "materialGroup";
+    for (const p of pieces) {
+      const img = document.createElement("img");
+      img.src = pieceImageSrc(p);
+      img.alt = p;
+      group.appendChild(img);
+    }
+    el.appendChild(group);
   }
-  el.appendChild(group);
   if (lead) {
     const span = document.createElement("span");
     span.className = "materialLead";
@@ -388,8 +396,8 @@ function renderMaterialSide(el, pieces, lead) {
 // Which bar shows which color's captures follows the board's orientation, same as Lichess.
 function renderMaterialBars(topEl, bottomEl, fen, flipped) {
   const { capturedByWhite, capturedByBlack, diff } = materialInfo(fen);
-  renderMaterialSide(flipped ? topEl : bottomEl, capturedByWhite, diff > 0 ? diff : 0);
-  renderMaterialSide(flipped ? bottomEl : topEl, capturedByBlack, diff < 0 ? -diff : 0);
+  renderMaterialSide(flipped ? topEl : bottomEl, capturedByWhite, diff > 0 ? diff : 0, "white");
+  renderMaterialSide(flipped ? bottomEl : topEl, capturedByBlack, diff < 0 ? -diff : 0, "black");
 }
 
 function onSquarePointerDown(e, boardEl, sq, piece, opts) {

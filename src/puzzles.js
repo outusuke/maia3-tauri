@@ -107,7 +107,7 @@ function loadPuzzle(browsing = false) {
   az.puzzleActiveActions.style.display = "flex";
   az.puzzleDoneActions.style.display = "none";
   const mover = sideToMove(puzzleFen);
-  az.puzzleProgress.textContent = `Puzzle ${puzzleIndex + 1} / ${puzzles.length} — solved ${puzzleSolved}`;
+  setPuzzleProgress(`Puzzle ${puzzleIndex + 1} / ${puzzles.length} — solved ${puzzleSolved}`, puzzleIndex / puzzles.length);
   az.puzzlePrompt.innerHTML = `Find the best move for <b>${mover}</b>.`;
   renderPuzzleBoard(mover === "black");
   drawEvalGraph();
@@ -318,7 +318,7 @@ function handlePuzzleCorrect(puzzle) {
   puzzleSolved += 1;
   az.puzzleFeedback.className = "show correct";
   fillPuzzleFeedback("Correct!", puzzle);
-  az.puzzleProgress.textContent = `Puzzle ${puzzleIndex + 1} / ${puzzles.length} — solved ${puzzleSolved}`;
+  setPuzzleProgress(`Puzzle ${puzzleIndex + 1} / ${puzzles.length} — solved ${puzzleSolved}`, (puzzleIndex + 1) / puzzles.length);
   showPuzzleNext();
   renderPuzzleBoard(sideToMove(puzzleFen) === "black");
   puzzleShowHuman(puzzle);
@@ -355,10 +355,16 @@ az.puzzleExitBtn.addEventListener("click", exitPuzzleMode);
 az.puzzleExitBtn2.addEventListener("click", exitPuzzleMode);
 az.puzzleRestartBtn.addEventListener("click", enterPuzzleMode);
 
+// --pp drives the progress bar in style.css
+function setPuzzleProgress(text, fraction) {
+  az.puzzleProgress.textContent = text;
+  az.puzzleProgress.style.setProperty("--pp", String(fraction));
+}
+
 function finishPuzzles() {
   az.puzzleActiveActions.style.display = "none";
   az.puzzleDoneActions.style.display = "flex";
-  az.puzzleProgress.textContent = `Done! Solved ${puzzleSolved} / ${puzzles.length}.`;
+  setPuzzleProgress(`Done! Solved ${puzzleSolved} / ${puzzles.length}.`, 1);
   az.puzzlePrompt.textContent = "";
 }
 
