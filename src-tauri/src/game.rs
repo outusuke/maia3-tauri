@@ -434,4 +434,40 @@ mod tests {
         play(&mut g, "e5d6");
         assert_eq!(g.halfmove, 0);
     }
+
+    #[test]
+    fn insufficient_material_cases() {
+        let dead = |fen: &str| Game::from_fen(fen).unwrap().state().status == "draw";
+        assert!(dead("4k3/8/8/8/8/8/8/4K3 w - - 0 1"));
+        assert!(dead("4k3/8/8/8/8/8/8/3NK3 w - - 0 1"));
+        assert!(!dead("4k3/8/8/8/8/8/8/3NKN2 w - - 0 1"));
+        assert!(!dead("4k3/8/8/8/8/8/P7/4K3 w - - 0 1"));
+        assert!(dead("4kb2/8/8/8/8/8/8/2B1K3 w - - 0 1"));
+        assert!(!dead("2b1k3/8/8/8/8/8/8/2B1K3 w - - 0 1"));
+    }
+
+    #[test]
+    fn threefold_repetition_draws() {
+        let mut g = Game::new();
+        for _ in 0..2 {
+            for mv in ["g1f3", "g8f6", "f3g1", "f6g8"] {
+                play(&mut g, mv);
+            }
+        }
+        assert_eq!(g.state().status, "draw");
+    }
+
+    #[test]
+    fn castling_flags_for_a_moved_king_are_ignored() {
+        assert!(Game::from_fen("4k3/8/8/8/8/8/8/R2K3R w KQ - 0 1").is_ok());
+    }
+
+    #[test]
+    fn san_for_common_moves() {
+        let mut g = Game::new();
+        play(&mut g, "e2e4");
+        play(&mut g, "g8f6");
+        play(&mut g, "f1c4");
+        assert_eq!(g.san_history, ["e4", "Nf6", "Bc4"]);
+    }
 }

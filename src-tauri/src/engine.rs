@@ -309,3 +309,39 @@ fn position_command(start_fen: &str, moves: &[String]) -> String {
         format!("position fen {fen} moves {}", moves.join(" "))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_a_centipawn_line() {
+        let l = parse_info_line("info depth 12 multipv 2 score cp -35 nodes 1 pv e7e5 g1f3").unwrap();
+        assert_eq!((l.multipv, l.depth, l.score_cp, l.mate), (2, 12, Some(-35), None));
+        assert_eq!(l.pv, ["e7e5", "g1f3"]);
+    }
+
+    #[test]
+    fn parses_a_mate_line() {
+        let l = parse_info_line("info depth 5 score mate 3 pv d1h5").unwrap();
+        assert_eq!(l.mate, Some(3));
+    }
+
+    #[test]
+    fn ignores_bound_lines() {
+        assert!(parse_info_line("info depth 9 score cp 40 lowerbound pv e2e4").is_none());
+        assert!(parse_info_line("info depth 9 score cp 40 upperbound pv e2e4").is_none());
+    }
+
+    #[test]
+    fn keeps_terminal_positions_without_a_pv() {
+        assert!(parse_info_line("info depth 0 score mate 0").is_some());
+        assert!(parse_info_line("info string hello").is_none());
+    }
+
+    #[test]
+    fn en_passant_square_is_converted_for_uci() {
+        let fen = uci_fen("4k3/8/8/3pP3/8/8/8/4K3 w - d5 0 1");
+        assert_eq!(fen.split_whitespace().nth(3), Some("d6"));
+    }
+}

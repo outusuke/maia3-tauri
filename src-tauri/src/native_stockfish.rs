@@ -1,6 +1,7 @@
 use libloading::Library;
 use std::ffi::{c_char, c_int, CStr, CString};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -8,6 +9,9 @@ use std::time::Duration;
 pub const LIBRARY: &str = "libmultistockfish_light.so";
 
 const QUIT_GRACE: Duration = Duration::from_secs(5);
+
+// the library keeps one global instance, so a second init on a live one must be refused
+static RUNNING: AtomicBool = AtomicBool::new(false);
 
 type InitFn = unsafe extern "C" fn() -> c_int;
 type WriteFn = unsafe extern "C" fn(*mut c_char) -> isize;
@@ -81,8 +85,12 @@ pub struct NativeStockfish {
 
 pub fn start() -> Result<(NativeStockfish, Receiver<String>), String> {
     let api = api()?;
+    if RUNNING.swap(true, Ordering::SeqCst) {
+        return Err("the previous Stockfish is still shutting down".into());
+    }
     let code = unsafe { (api.init)() };
     if code != 0 {
+        RUNNING.store(false, Ordering::SeqCst);
         return Err(format!("Stockfish init failed ({code}): {}", last_error(api)));
     }
 
@@ -95,9 +103,13 @@ pub fn start() -> Result<(NativeStockfish, Receiver<String>), String> {
             if code != 0 {
                 eprintln!("[stockfish] exited with {code}: {}", last_error(api));
             }
+            RUNNING.store(false, Ordering::SeqCst);
             let _ = exit_tx.send(());
         })
-        .map_err(|e| format!("could not start the Stockfish thread: {e}"))?;
+        .map_err(|e| {
+            RUNNING.store(false, Ordering::SeqCst);
+            format!("could not start the Stockfish thread: {e}")
+        })?;
 
     let (tx, rx) = mpsc::channel();
     let reader = thread::Builder::new()
