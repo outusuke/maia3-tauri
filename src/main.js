@@ -146,6 +146,8 @@ async function restoreSession() {
   try { s = JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { s = null; }
   if (!s) { sessionReady = true; return; }
   lastSavedSession = JSON.stringify(s);
+  // don't flash the New game sheet while the saved game loads
+  if (s.play) els.setupPanel.classList.add("collapsed");
   try {
     const st = s.settings || {};
     if (st.elo) { els.eloSlider.value = st.elo; els.eloValue.textContent = st.elo; }
@@ -160,6 +162,8 @@ async function restoreSession() {
   } catch (err) {
     setStatus(`Could not restore the last session: ${err}`);
   }
+  // restore didn't bring the game back, so offer a new one after all
+  if (s.play && !gameStarted) els.setupPanel.classList.remove("collapsed");
   sessionReady = true;
 }
 
