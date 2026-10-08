@@ -678,6 +678,16 @@ body.is-dragging, body.is-dragging * {
 .panel.collapsible.collapsed > #start-btn { margin-top: 4px; } /* the panel folds up when a game starts, and this is how you start the next one */
 
 #flaggedList { max-height: 38vh; overflow-y: auto; }
+#recentList { display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
+.recentItem {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 48px;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-bg-2);
+  color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.recentItem:hover { background: #262a33; }
+.recentTitle { font-size: 14px; font-weight: 600; }
+.recentMeta { font-size: 12px; color: var(--muted); }
+#recentClearBtn { margin-top: 8px; }
 #flaggedPanel > h2 { display: flex; justify-content: space-between; cursor: pointer; user-select: none; }
 #flaggedPanel > h2::after { content: "▾"; }
 #flaggedPanel.listCollapsed > h2::after { content: "▸"; }
