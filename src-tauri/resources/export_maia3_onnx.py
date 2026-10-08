@@ -19,7 +19,7 @@ Output: a single .onnx file with this I/O contract:
       logits_value  float32 [batch, 3]              # [loss, draw, win]
 
 `batch` is dynamic, so the same file can score 1 position (bestmove) or several
-at once (MultiPV candidate WDL scoring), exactly like maia3_onnx_uci.py does.
+at once (MultiPV candidate WDL scoring).
 """
 
 import argparse
