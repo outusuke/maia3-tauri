@@ -527,6 +527,7 @@ function loadAnalysisGame(game) {
   renderAnalyzeBoard();
   drawEvalGraph();
   exitPuzzleMode();
+  applyCachedAnalysis(game);
 }
 
 [az.loadPanel, az.controlsPanel].forEach((panel) => {
@@ -576,6 +577,7 @@ az.analyzeBtn.addEventListener("click", async () => {
       multipv: 5,
     });
     analysisDepth = analysisDepthUsed;
+    cacheAnalysis(loadedGame, analysis, analysisDepthUsed);
     az.analyzeStatus.textContent = `Analyzed ${analysis.length} moves.`;
     renderAnalyzeMoveList();
     renderFlaggedList();
