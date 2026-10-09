@@ -11,7 +11,7 @@ function azLastMoveAt(ply) {
 
 function analysisArrowsAt(ply) {
   const arrows = [];
-  if (!analysis || !az.arrowToggle.checked) return arrows;
+  if (!analysis || !az.arrowReview.checked) return arrows;
   const m = analysis[ply];
   if (!m) return arrows;
   const played = uciToSquares(m.uci);
@@ -33,7 +33,7 @@ function fenKey(fen) { return fen.split(" ").slice(0, 4).join(" "); }
 // Blue for the engine; purple belongs to the human-insight arrows.
 const ENG_ARROW_OPACITY = [0.85, 0.55, 0.35];
 function engineArrow(fen) {
-  if (!eng.enable.checked || !eng.arrows.checked || !az.arrowToggle.checked) return [];
+  if (!eng.enable.checked || !eng.arrows.checked) return [];
   if (puzzleMode && !puzzleLocked) return [];
   if (!engLive || engLive.key !== fenKey(fen)) return [];
   const out = [];
@@ -56,7 +56,7 @@ function analyzeView() {
       lastMove: variation.idx > 0 ? sq : null,
       arrows: variation.free
         ? engineArrow(fen)
-        : sq && az.arrowToggle.checked ? [{ from: sq[0], to: sq[1], brush: "blue" }] : [],
+        : sq ? [{ from: sq[0], to: sq[1], brush: "blue" }] : [],
       badge: null,
     };
   }
@@ -402,7 +402,37 @@ eng.enable.addEventListener("change", () => { engKey = null; engRefresh(); if (!
 eng.lines.addEventListener("change", () => { engKey = null; engRefresh(); });
 eng.arrows.addEventListener("change", redrawBoardForEngine);
 
-az.arrowToggle.addEventListener("change", () => { if (!puzzleMode) renderAnalyzeBoard(); });
+// engEnable / hiEnable are hidden inputs other code still reads, so the chips drive them.
+const ARROW_PREF_KEY = "maia3.arrows"; // only Review is saved; the engines start off
+const engOffHint = document.getElementById("engOffHint");
+const hiOffHint = document.getElementById("hiOffHint");
+const arrowChips = [
+  { input: eng.arrows, feature: eng.enable },
+  { input: hi.arrows, feature: hi.enable },
+  { input: az.arrowReview, feature: null },
+];
+function syncArrowChips() {
+  for (const c of arrowChips) if (c.feature) c.input.checked = c.feature.checked;
+  engOffHint.hidden = eng.enable.checked;
+  hiOffHint.hidden = hi.enable.checked;
+}
+try {
+  const saved = JSON.parse(localStorage.getItem(ARROW_PREF_KEY));
+  if (saved && typeof saved.review === "boolean") az.arrowReview.checked = saved.review;
+} catch {}
+for (const c of arrowChips) {
+  c.input.addEventListener("change", () => {
+    if (c.feature) {
+      c.feature.checked = c.input.checked;
+      c.feature.dispatchEvent(new Event("change"));
+      syncArrowChips();
+      return;
+    }
+    try { localStorage.setItem(ARROW_PREF_KEY, JSON.stringify({ review: az.arrowReview.checked })); } catch {}
+    if (!puzzleMode) renderAnalyzeBoard();
+  });
+}
+syncArrowChips();
 az.variationExitBtn.addEventListener("click", () => { variation = null; renderAnalyzeBoard(); });
 
 document.addEventListener("keydown", (e) => {

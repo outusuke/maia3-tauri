@@ -1,6 +1,6 @@
 [package]
 name = "maia-chess"
-version = "0.1.0"
+version = "2.2.0"
 description = "A simple Lichess-style chess GUI that plays against the Maia-3 human-like engine"
 license = "GPL-3.0"
 edition = "2024"

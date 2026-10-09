@@ -20,6 +20,9 @@
   <content_rating type="oars-1.1" />
   <url type="homepage">https://github.com/CSSLab/maia3</url>
   <releases>
+    <release version="2.2.0" date="2026-10-09">
+      <description><p>Separate toggles for Stockfish, Maia and game-review arrows on the board.</p></description>
+    </release>
     <release version="0.1.0" date="2026-09-22">
       <description><p>Initial release.</p></description>
     </release>

@@ -619,10 +619,23 @@ body.is-dragging, body.is-dragging * {
   z-index: 5;
   overflow: visible;
 }
-.arrowToggle {
-  display: inline-flex; align-items: center; gap: 5px;
+.arrowChips { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; margin-top: 6px; }
+.arrowChipsLabel { font-size: 12px; color: var(--muted); margin-right: 2px; }
+.arrowChip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border, #444);
   font-size: 12px; color: var(--muted); cursor: pointer; user-select: none;
+  transition: opacity .12s, background .12s, color .12s;
 }
+.arrowChip input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.arrowChip .chipSwatch { width: 14px; height: 4px; border-radius: 2px; opacity: .35; }
+.arrowChip:has(input:checked) { color: var(--text); background: rgba(128,128,128,.16); }
+.arrowChip:has(input:checked) .chipSwatch { opacity: 1; }
+.arrowChip:has(input:focus-visible) { outline: 2px solid #3b6ef2; outline-offset: 1px; }
+.keyDot { display: inline-block; width: 16px; height: 5px; border-radius: 3px; margin-right: 8px; vertical-align: middle; }
+.offHint { font-size: 12.5px; color: var(--muted); margin: 6px 0 2px; }
+.offHint[hidden] { display: none; }
+.offHint b { color: var(--text); font-weight: 600; }
 
 .lineMoves { line-height: 1.9; }
 .lineNum { color: var(--muted); margin-right: 3px; }
@@ -722,7 +735,7 @@ summary.hiTitle { cursor: pointer; }
 
 /* Live engine */
 .engHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
-.engSwitch { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+.engSwitch { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 600; }
 .engOpts { display: flex; gap: 6px; }
 .engOpts select { font-size: 12px; padding: 3px 6px; }
 .engSummary { display: flex; align-items: center; gap: 10px; margin: 12px 0 8px; }
@@ -932,7 +945,10 @@ button.primary { min-height: 48px; border-radius: 12px; font-size: 15px; font-we
   #boardActions #aFlipBtn { order: 0; flex: none; min-height: 44px; padding: 0 12px; font-size: 13px; border-radius: 10px; }
   #boardActions #boardNav { order: 1; flex: 1; min-width: 0; width: auto; max-width: none; padding: 0; }
   #boardActions #boardNav .navBtn { padding: 0; border-radius: 10px; }
-  #boardActions .arrowToggle { order: 2; flex: none; min-height: 44px; font-size: 13px; white-space: nowrap; }
+  #boardActions { flex-wrap: wrap; }
+  #boardActions .arrowChips { order: 2; flex: 1 0 100%; margin: 0; }
+  #boardActions .arrowChipsLabel { display: none; }
+  #boardActions .arrowChip { min-height: 44px; padding: 0 10px; font-size: 13px; }
 
   /* Moves: one scrolling row between prev/next, like a notation ticker. */
   #moves-panel {

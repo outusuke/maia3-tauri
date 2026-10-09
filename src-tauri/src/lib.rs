@@ -272,6 +272,11 @@ fn set_engine_elo(state: State<AppState>, elo: u32) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+fn app_version() -> &'static str {
+    env!("MAIA_VERSION")
+}
+
 // try_lock leaves a search in flight alone
 #[tauri::command]
 fn suspend_engines(state: State<AppState>) -> Result<(), String> {
@@ -522,6 +527,7 @@ pub fn run() {
             scratch_legal_targets,
             scratch_try_move,
             list_models,
+            app_version,
         ])
         .build(tauri::generate_context!())
         .expect("error while building Maia Chess")

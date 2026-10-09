@@ -176,8 +176,17 @@
         <div id="boardActions">
         <div class="btnRow" style="justify-content:center;">
           <button class="small" id="aFlipBtn" title="Flip board (F)">⇅ Flip</button>
-          <label class="arrowToggle" title="Blue: engine's best move. Red: the move that was played, when it wasn't good. Right-click and drag on the board to draw your own arrows.">
-            <input type="checkbox" id="aArrowToggle" checked> Arrows
+        </div>
+        <div class="arrowChips" id="arrowChips" role="group" aria-label="Board arrows">
+          <span class="arrowChipsLabel">Arrows</span>
+          <label class="arrowChip" id="chipEng" title="Stockfish: turn on the engine and show its best lines as arrows (blue; fainter = lower ranked).">
+            <input type="checkbox" id="engArrows" autocomplete="off"><i class="chipSwatch" style="background:#3b6ef2"></i>Stockfish
+          </label>
+          <label class="arrowChip" id="chipHi" title="Maia: turn on human insights and show the two moves a human of the chosen rating is most likely to play (purple).">
+            <input type="checkbox" id="hiArrows" autocomplete="off"><i class="chipSwatch" style="background:#9b4fd8"></i>Maia
+          </label>
+          <label class="arrowChip" id="chipReview" title="Game review: the move that was played when it wasn't good (red) and the best move (blue).">
+            <input type="checkbox" id="aArrowReview" checked><i class="chipSwatch" style="background:#d9534f"></i>Review
           </label>
         </div>
         <div class="navBtns" id="boardNav">
@@ -292,7 +301,7 @@
 
         <div class="panel" id="enginePanel">
           <div class="engHead">
-            <label class="engSwitch" title="Stockfish evaluates the position on the board. Move pieces to try your own lines."><input type="checkbox" id="engEnable"> Engine</label>
+            <div class="engSwitch" title="Stockfish evaluates the position on the board. Move pieces to try your own lines."><i class="keyDot" style="background:#3b6ef2"></i>Engine<input type="checkbox" id="engEnable" hidden autocomplete="off"></div>
             <div class="engOpts">
               <select id="engLines" title="Lines shown">
                 <option value="1">1 line</option>
@@ -301,6 +310,7 @@
               </select>
             </div>
           </div>
+          <div id="engOffHint" class="offHint">Off. Tap <b>Stockfish</b> under the board to turn it on.</div>
           <div id="engNote" class="hint"></div>
           <div id="engBody" style="display:none;">
             <div class="engSummary">
@@ -309,16 +319,16 @@
               <span id="engStatus" class="engStatus"></span>
             </div>
             <div id="engList"></div>
-            <label class="arrowToggle engFoot"><input type="checkbox" id="engArrows" checked> Arrows for each line on board</label>
           </div>
         </div>
 
         <div class="panel" id="humanPanel" style="display:none;">
-          <h2>Human insights</h2>
-          <div class="inlineRow" style="justify-content:space-between;">
-            <label class="arrowToggle"><input type="checkbox" id="hiEnable"> Enable</label>
+          <h2><i class="keyDot" style="background:#9b4fd8"></i>Human insights</h2>
+          <div class="inlineRow">
+            <input type="checkbox" id="hiEnable" hidden autocomplete="off">
             <select id="hiRating" title="Rating of the player Maia imitates"></select>
           </div>
+          <div id="hiOffHint" class="offHint">Off. Tap <b>Maia</b> under the board to turn it on.</div>
           <div id="hiStatus" class="hint"></div>
           <div id="hiBody" style="display:none;">
             <div id="hiSummary"></div>
@@ -330,7 +340,6 @@
               <svg id="hiChart" viewBox="0 0 320 150"></svg>
               <div id="hiChartLegend"></div>
             </details>
-            <label class="arrowToggle" style="margin-top:8px;"><input type="checkbox" id="hiArrows" checked> <i class="hiSwatch"></i> Two likeliest human moves on board</label>
           </div>
         </div>
       </aside>
