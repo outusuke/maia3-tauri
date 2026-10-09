@@ -405,6 +405,7 @@ let gameOverHandled = false;
 function updateControls() {
   if (isGameOver()) {
     if (!gameOverHandled) {
+      saveRecentGame();
       els.setupPanel.classList.remove("collapsed");
       els.eloLiveHint.style.display = "none";
     }
