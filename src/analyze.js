@@ -42,7 +42,7 @@ const az = {
   puzzleExitBtn2: document.getElementById("puzzleExitBtn2"),
   puzzleRestartBtn: document.getElementById("puzzleRestartBtn"),
   puzzleNextBtn: document.getElementById("puzzleNextBtn"),
-  arrowToggle: document.getElementById("aArrowToggle"),
+  arrowReview: document.getElementById("aArrowReview"),
   variationBar: document.getElementById("variationBar"),
   variationTitle: document.getElementById("variationTitle"),
   variationLine: document.getElementById("variationLine"),

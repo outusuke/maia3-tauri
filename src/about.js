@@ -6,7 +6,7 @@ const ABOUT_REPO = "https://github.com/outusuke/maia3-tauri";
 let aboutOpener = null;
 
 async function loadAboutVersion() {
-  try { aboutVersion.textContent = `Version ${await window.__TAURI__.app.getVersion()}`; } catch {}
+  try { aboutVersion.textContent = `Version ${await window.__TAURI__.core.invoke("app_version")}`; } catch {}
 }
 
 function openAbout() {
