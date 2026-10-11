@@ -2,6 +2,7 @@ const els = {
   board: document.getElementById("board"),
   status: document.getElementById("status-line"),
   moveList: document.getElementById("move-list"),
+  movesToggle: document.getElementById("moves-toggle"),
   startBtn: document.getElementById("start-btn"),
   flipBtn: document.getElementById("flip-btn"),
   resignBtn: document.getElementById("resign-btn"),
@@ -118,6 +119,12 @@ function viewMove(ply) {
 }
 
 els.goLiveBtn.addEventListener("click", () => viewMove(posHistory.length - 1));
+els.movesToggle.addEventListener("click", () => {
+  const open = document.getElementById("moves-panel").classList.toggle("open");
+  els.movesToggle.setAttribute("aria-expanded", String(open));
+  els.movesToggle.setAttribute("aria-label", open ? "Hide all moves" : "Show all moves");
+  renderMoveList();
+});
 document.getElementById("new-game-btn").addEventListener("click", () => {
   els.setupPanel.classList.remove("collapsed");
   document.getElementById("playSide").scrollTo({ top: 0, behavior: "smooth" });

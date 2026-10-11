@@ -113,12 +113,15 @@
 
         </div>
 
-        <div class="panel" id="moves-panel">
+        <div class="panel movesPanel" id="moves-panel">
           <div class="historyNotice" id="history-notice">
             <span>Viewing a past position.</span>
             <button class="small" id="go-live-btn">Back to current</button>
           </div>
-          <ol id="move-list"></ol>
+          <div class="moveBar">
+            <ol id="move-list" class="moveList"></ol>
+            <button type="button" id="moves-toggle" class="movesToggle" aria-expanded="false" aria-label="Show all moves"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          </div>
           <div class="actions">
             <button class="small" id="new-game-btn">New game</button>
             <button class="small" id="undo-btn" title="Undo (U)">Undo</button>
@@ -224,9 +227,11 @@
           <button id="practiceBtn" class="primary" style="display:none;">Practice my mistakes →</button>
         </div>
 
-        <div class="panel paneMoves" id="moveListPanel" style="display:none;">
-          <h2>Moves</h2>
-          <div id="analyzeMoveList"></div>
+        <div class="panel paneMoves movesPanel" id="moveListPanel" style="display:none;">
+          <div class="moveBar">
+            <ol id="analyzeMoveList" class="moveList"></ol>
+            <button type="button" id="az-moves-toggle" class="movesToggle" aria-expanded="false" aria-label="Show all moves"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          </div>
         </div>
 
         <div class="panel" id="puzzlePanelV2">

@@ -550,10 +550,11 @@ function loadAnalysisGame(game) {
   az.practiceSideSelect.value = game.myColor === "white" || game.myColor === "black" ? game.myColor : "both";
   azViewPly = game.sans.length;
   az.analyzeBtn.disabled = game.sans.length === 0;
-  az.moveListPanel.style.display = "none";
   az.flaggedPanel.style.display = "none";
   az.controlsPanel.classList.remove("collapsed");
   az.analyzeStatus.textContent = `Loaded ${Math.ceil(game.sans.length / 2)} moves. Tap Analyze to grade them.`;
+  az.moveListPanel.style.display = "block";
+  renderAnalyzeMoveList();
   az.tab.classList.add("hasGame");
   setPane("moves");
   azFlipped = game.myColor === "white" || game.myColor === "black" ? game.myColor === "black" : az.sideSelect.value === "black";
@@ -632,33 +633,46 @@ function gradeClass(grade) { return "grade-" + grade; }
 function isPositiveGrade(grade) { return ["good", "best", "onlymove", "brilliant"].includes(grade); }
 
 function renderAnalyzeMoveList() {
-  az.moveList.innerHTML = "";
+  const list = az.moveList;
+  list.innerHTML = "";
+  if (loadedGame.sans.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "move-empty";
+    empty.textContent = "No moves.";
+    list.appendChild(empty);
+    return;
+  }
   const side = az.sideSelect.value;
-  for (let i = 0; i < analysis.length; i++) {
-    const m = analysis[i];
-    const mover = sideToMove(m.fenBefore);
-    if (side !== "both" && side !== mover) continue;
-
-    const row = document.createElement("div");
-    row.className = "aMove";
-    row.dataset.ply = String(i + 1);
-    const num = Math.floor(i / 2) + 1;
-    const label = (i % 2 === 0) ? `${num}.` : `${num}...`;
-    const left = document.createElement("span");
-    const chip = document.createElement("span");
-    chip.className = `gradeChip ${gradeClass(m.grade)}`;
-    left.append(chip, `${label} ${m.san}`);
-    const right = document.createElement("span");
-    right.className = gradeClass(m.grade);
-    right.textContent = EVAL_GRADE_NAME[m.grade] ?? m.grade;
-    row.appendChild(left);
-    row.appendChild(right);
-    row.addEventListener("click", () => azGoToPly(i + 1));
-    az.moveList.appendChild(row);
-  }
-  if (!az.moveList.children.length) {
-    az.moveList.innerHTML = '<div class="emptyHint">No moves for this side.</div>';
-  }
+  movePairs(loadedGame.sans, loadedGame.startFen).forEach((row) => {
+    const li = document.createElement("li");
+    li.className = "move-row";
+    const numEl = document.createElement("span");
+    numEl.className = "move-num";
+    numEl.textContent = `${row.num}.`;
+    li.appendChild(numEl);
+    [row.white, row.black].forEach((m, i) => {
+      const cell = document.createElement("span");
+      cell.className = "move-san";
+      if (!m) {
+        cell.classList.add("empty");
+        cell.textContent = i === 0 ? "…" : "";
+      } else {
+        const graded = analysis && analysis[m.ply - 1];
+        if (graded && (side === "both" || side === sideToMove(graded.fenBefore))) {
+          const chip = document.createElement("span");
+          chip.className = `gradeChip ${gradeClass(graded.grade)}`;
+          chip.title = EVAL_GRADE_NAME[graded.grade] ?? graded.grade;
+          cell.appendChild(chip);
+        }
+        cell.append(m.san);
+        cell.dataset.ply = String(m.ply);
+        cell.addEventListener("click", () => azGoToPly(m.ply));
+      }
+      li.appendChild(cell);
+    });
+    list.appendChild(li);
+  });
+  highlightCurrentMove();
 }
 az.sideSelect.addEventListener("change", () => {
   orientAnalyzeBoardForSide();
@@ -667,10 +681,24 @@ az.sideSelect.addEventListener("change", () => {
 });
 
 function highlightCurrentMove() {
-  az.moveList.querySelectorAll(".aMove").forEach((row) => {
-    row.classList.toggle("current", !variation && row.dataset.ply === String(azViewPly));
+  az.moveList.querySelectorAll(".move-san[data-ply]").forEach((cell) => {
+    cell.classList.toggle("current", !variation && cell.dataset.ply === String(azViewPly));
   });
+  const cur = az.moveList.querySelector(".move-san.current");
+  if (!cur) return;
+  const lr = az.moveList.getBoundingClientRect();
+  const cr = cur.getBoundingClientRect();
+  if (getComputedStyle(az.moveList).display === "flex") az.moveList.scrollLeft += cr.left - lr.left - (lr.width - cr.width) / 2;
+  else if (cr.top < lr.top) az.moveList.scrollTop -= lr.top - cr.top;
+  else if (cr.bottom > lr.bottom) az.moveList.scrollTop += cr.bottom - lr.bottom;
 }
+
+az.movesToggle.addEventListener("click", () => {
+  const open = az.moveListPanel.classList.toggle("open");
+  az.movesToggle.setAttribute("aria-expanded", String(open));
+  az.movesToggle.setAttribute("aria-label", open ? "Hide all moves" : "Show all moves");
+  highlightCurrentMove();
+});
 
 az.flaggedHeading.addEventListener("click", () => az.flaggedPanel.classList.toggle("listCollapsed"));
 

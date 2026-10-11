@@ -21,6 +21,7 @@ const az = {
   controlsPanel: document.getElementById("analyzeControlsPanel"),
   moveListPanel: document.getElementById("moveListPanel"),
   moveList: document.getElementById("analyzeMoveList"),
+  movesToggle: document.getElementById("az-moves-toggle"),
   flaggedPanel: document.getElementById("flaggedPanel"),
   flaggedList: document.getElementById("flaggedList"),
   flaggedHeading: document.getElementById("flaggedHeading"),

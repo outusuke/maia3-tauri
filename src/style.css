@@ -206,7 +206,7 @@ button.small.wide { width: 100%; }
 #setup-panel.collapsed > #elo-field { margin-top: 12px; }
 #setup-panel.collapsed > #start-btn { margin-top: 12px; }
 
-#move-list { margin: 0; padding: 0; list-style: none; font-size: 14px; font-variant-numeric: tabular-nums; }
+.moveList { margin: 0; padding: 0; list-style: none; font-size: 14px; font-variant-numeric: tabular-nums; }
 .move-row { display: grid; grid-template-columns: 38px 1fr 1fr; align-items: center; padding: 1px 4px; border-radius: 6px; }
 .move-row:nth-child(even) { background: rgba(255, 255, 255, 0.03); }
 .move-num { color: var(--muted); text-align: right; padding-right: 8px; font-size: 12.5px; }
@@ -217,6 +217,7 @@ button.small.wide { width: 100%; }
 .move-empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
 .move-result { text-align: center; font-weight: 600; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); }
 .move-result small { display: block; font-weight: 400; font-size: 12px; color: var(--muted); }
+.movesToggle { display: none; }
 #new-game-btn { display: none; flex-basis: 100%; background: var(--accent); color: var(--on-accent); font-weight: 700; }
 #new-game-btn:hover:not(:disabled) { background: var(--accent-hover); }
 #moves-panel > .actions { position: sticky; bottom: -14px; margin: 10px -14px -14px; padding: 10px 14px 14px; background: var(--panel-bg); border-radius: 0 0 14px 14px; }
@@ -247,7 +248,7 @@ button.small.wide { width: 100%; }
 #analyzeTab.hasGame #analyzeControlsPanel { order: 1; }
 #analyzeTab.hasGame #evalGraphBox { order: 2; }
 #analyzeTab.hasGame #flaggedPanel { order: 3; }
-#analyzeTab.hasGame #moveListPanel { order: 4; }
+#analyzeTab.hasGame #moveListPanel { order: 0; }
 #analyzeTab.hasGame #analyzeControlsPanel.collapsed { order: 8; }
 #analyzeTab.hasGame #recentPanel { order: 9; }
 #analyzeTab.hasGame #loadPanel { order: 10; }
@@ -451,14 +452,6 @@ button.small.wide { width: 100%; }
 #editorError { color: #ff8a8a; font-size: 12.5px; min-height: 1.2em; }
 
 /* Analyze / Practice tab */
-#analyzeMoveList { font-size: 13px; }
-#analyzeMoveList .aMove {
-  display: flex; justify-content: space-between; gap: 8px; padding: 4px 6px;
-  border-radius: 6px; cursor: pointer;
-}
-#analyzeMoveList .aMove:hover { background: var(--panel-bg-2); }
-#analyzeMoveList .aMove.current { outline: 1px solid var(--accent); }
-#analyzeMoveList .aMove .grade { font-size: 11px; padding: 1px 6px; border-radius: 10px; }
 .grade-good { color: #8fe89b; }
 .grade-best { color: #6fdc8c; }
 .grade-onlymove { color: #7db7e8; }
@@ -716,16 +709,36 @@ summary.hiTitle { cursor: pointer; }
   #new-game-btn { display: block; }
   #playSide:has(#setup-panel:not(.collapsed)) #new-game-btn { display: none; }
   #setup-panel.collapsed { display: none; }
-  #move-list {
+  .moveList {
     display: flex; align-items: center; gap: 2px; overflow-x: auto; overflow-y: hidden;
     scrollbar-width: none; padding: 2px 0;
   }
-  #move-list::-webkit-scrollbar { display: none; }
+  .moveList::-webkit-scrollbar { display: none; }
   .move-row, .move-row:nth-child(even) { flex: none; display: flex; align-items: center; padding: 0; background: none; }
   .move-num { padding: 0 2px 0 6px; }
   .move-san { min-height: 34px; display: inline-flex; align-items: center; padding: 0 10px; font-size: 15px; border-radius: 8px; }
   .move-result { flex: none; margin: 0; padding: 0 12px; border-top: 0; }
   .move-empty { flex: none; }
+
+  .moveBar { display: flex; align-items: center; gap: 6px; }
+  .movesPanel.open .moveBar { align-items: flex-start; }
+  .moveList { flex: 1; min-width: 0; }
+  .movesToggle {
+    display: grid; place-items: center; flex: none; width: 44px; height: 44px; padding: 0;
+    border: 0; border-radius: 12px; background: var(--panel-bg-2); color: var(--text); cursor: pointer;
+  }
+  .movesPanel.open .movesToggle svg { transform: rotate(180deg); }
+  .movesPanel.open .moveList { display: block; max-height: 180px; overflow-x: hidden; overflow-y: auto; }
+  .movesPanel.open .move-row { display: grid; grid-template-columns: 38px 1fr 1fr; padding: 1px 4px; border-radius: 6px; }
+  .movesPanel.open .move-row:nth-child(even) { background: rgba(255, 255, 255, 0.03); }
+  .movesPanel.open .move-num { padding: 0 8px 0 0; }
+  .movesPanel.open .move-result { padding: 6px 0 0; border-top: 1px solid var(--border); }
+  :root:has(#moves-panel.open) {
+    --cell: clamp(32px, min(
+      calc(100vw / 8),
+      calc((var(--vh) - var(--tabbar-h) - env(safe-area-inset-top) - env(safe-area-inset-bottom) - var(--stack-h) - 310px) / 8)
+    ), 100px);
+  }
 }
 
 /* Short windows (phones on their side): drop the player strips so the board keeps its size. */
