@@ -21,7 +21,7 @@ MODELS_DIR = ROOT / "src-tauri" / "resources" / "models"
 ORT_DIR = ROOT / "src-tauri" / "resources" / "ort"
 SF_DIR = ROOT / "src-tauri" / "resources" / "stockfish"
 
-ORT_VERSION = os.environ.get("ORT_VERSION", "1.30.0")
+ORT_VERSION = os.environ.get("ORT_VERSION", "1.31.0")
 SF_TAG = os.environ.get("STOCKFISH_TAG")
 
 
