@@ -12,7 +12,6 @@ const els = {
   modelSelect: document.getElementById("model-select"),
   eloSlider: document.getElementById("elo-slider"),
   eloValue: document.getElementById("elo-value"),
-  eloLiveHint: document.getElementById("elo-live-hint"),
   temperatureSlider: document.getElementById("temperature-slider"),
   temperatureValue: document.getElementById("temperature-value"),
   topPSlider: document.getElementById("top-p-slider"),
@@ -35,10 +34,8 @@ const els = {
   materialTop: document.getElementById("materialTop"),
   materialBottom: document.getElementById("materialBottom"),
   setupPanel: document.getElementById("setup-panel"),
-  setupSummary: document.getElementById("setup-summary"),
   advanced: document.getElementById("advanced-settings"),
   advancedSummary: document.getElementById("advanced-summary"),
-  movesMeta: document.getElementById("moves-meta"),
 };
 
 let state = {
@@ -68,7 +65,6 @@ els.eloSlider.addEventListener("change", async () => {
   const elo = parseInt(els.eloSlider.value, 10);
   try {
     await invoke("set_engine_elo", { elo });
-    els.movesMeta.textContent = `You (${playerColor}) vs Maia-3 · ${elo} Elo`;
     setStatus(`Maia-3 Elo set to ${elo} for the rest of this game.`);
   } catch (err) {
     setStatus(`Could not update Elo: ${err}`);
@@ -122,6 +118,11 @@ function viewMove(ply) {
 }
 
 els.goLiveBtn.addEventListener("click", () => viewMove(posHistory.length - 1));
+document.getElementById("new-game-btn").addEventListener("click", () => {
+  els.setupPanel.classList.remove("collapsed");
+  document.getElementById("playSide").scrollTo({ top: 0, behavior: "smooth" });
+});
+
 els.navStart.addEventListener("click", () => viewMove(0));
 els.navPrev.addEventListener("click", () => viewMove(viewPly - 1));
 els.navNext.addEventListener("click", () => viewMove(viewPly + 1));
@@ -171,10 +172,6 @@ function updateAdvancedSummary() {
 els.startFenInput.addEventListener("input", updateAdvancedSummary);
 els.setupPanel.querySelector("h2").addEventListener("click", () => els.setupPanel.classList.toggle("collapsed"));
 els.analyzeThisBtn.addEventListener("click", sendGameToAnalyze);
-document.getElementById("new-game-btn").addEventListener("click", () => {
-  switchTab("play");
-  els.setupPanel.classList.remove("collapsed");
-});
 
 function hideFenError() { els.fenError.style.display = "none"; els.fenError.textContent = ""; }
 function showFenError(msg) {
@@ -290,16 +287,10 @@ async function startGame() {
     gameStarted = true;
     selected = null;
     legalTargets = [];
-    els.setupSummary.textContent = `${playerColor === "white" ? "White" : "Black"} · ${elo} · ${model.replace("maia3-", "").toUpperCase()}`;
-    els.movesMeta.textContent = `You (${playerColor}) vs Maia-3 · ${elo} Elo`;
     els.setupPanel.classList.add("collapsed");
-    els.eloLiveHint.style.display = "";
     renderPlayBoard();
     renderMoveList();
-    const tempNote = temperature > 0
-      ? `, temp ${temperature}, top-p ${topP}${openingMoves ? `, opening ${openingMoves}` : ""}`
-      : ", greedy";
-    setStatus(`Playing as ${playerColor}. Maia-3 (${model}, ${elo} Elo${tempNote}) is your opponent.`);
+    setStatus(statusBanner());
 
     if (state.turn !== playerColor) {
       await triggerEngineMove();
@@ -407,7 +398,6 @@ function updateControls() {
     if (!gameOverHandled) {
       saveRecentGame();
       els.setupPanel.classList.remove("collapsed");
-      els.eloLiveHint.style.display = "none";
     }
     gameOverHandled = true;
   } else {

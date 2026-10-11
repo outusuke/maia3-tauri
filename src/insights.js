@@ -86,7 +86,6 @@ function hiResetForGame() {
   hiPromises.clear();
   hiData.clear();
   hiToken++;
-  hi.panel.style.display = "block";
   hi.body.style.display = "none";
   hi.status.textContent = "";
 }

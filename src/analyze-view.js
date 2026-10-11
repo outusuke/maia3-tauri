@@ -110,10 +110,6 @@ function renderAnalyzeBoard() {
     atStart = azViewPly === 0;
     atEnd = azViewPly >= maxPly;
   }
-  az.navStart.disabled = atStart;
-  az.navPrev.disabled = atStart;
-  az.navNext.disabled = atEnd;
-  az.navEnd.disabled = atEnd;
   setBoardNav(atStart, atEnd);
   az.variationBar.style.display = variation ? "flex" : "none";
   syncLineHighlights();
@@ -138,10 +134,6 @@ function azGo(where) {
   }
   renderAnalyzeBoard();
 }
-az.navStart.addEventListener("click", () => azGo("start"));
-az.navPrev.addEventListener("click", () => azGo("prev"));
-az.navNext.addEventListener("click", () => azGo("next"));
-az.navEnd.addEventListener("click", () => azGo("end"));
 
 function azGoToPly(ply) {
   if (puzzleMode) return;
@@ -404,8 +396,6 @@ eng.arrows.addEventListener("change", redrawBoardForEngine);
 
 // engEnable / hiEnable are hidden inputs other code still reads, so the chips drive them.
 const ARROW_PREF_KEY = "maia3.arrows"; // only Review is saved; the engines start off
-const engOffHint = document.getElementById("engOffHint");
-const hiOffHint = document.getElementById("hiOffHint");
 const arrowChips = [
   { input: eng.arrows, feature: eng.enable },
   { input: hi.arrows, feature: hi.enable },
@@ -413,8 +403,6 @@ const arrowChips = [
 ];
 function syncArrowChips() {
   for (const c of arrowChips) if (c.feature) c.input.checked = c.feature.checked;
-  engOffHint.hidden = eng.enable.checked;
-  hiOffHint.hidden = hi.enable.checked;
 }
 try {
   const saved = JSON.parse(localStorage.getItem(ARROW_PREF_KEY));
@@ -434,6 +422,20 @@ for (const c of arrowChips) {
 }
 syncArrowChips();
 az.variationExitBtn.addEventListener("click", () => { variation = null; renderAnalyzeBoard(); });
+
+function setPane(name) {
+  az.tab.dataset.pane = name;
+  for (const b of az.paneTabs.querySelectorAll("button")) {
+    const on = b.dataset.pane === name;
+    b.classList.toggle("active", on);
+    b.setAttribute("aria-selected", String(on));
+  }
+  az.side.scrollTo({ top: 0 });
+}
+az.paneTabs.addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-pane]");
+  if (b) setPane(b.dataset.pane);
+});
 
 document.addEventListener("keydown", (e) => {
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
@@ -550,9 +552,10 @@ function loadAnalysisGame(game) {
   az.analyzeBtn.disabled = game.sans.length === 0;
   az.moveListPanel.style.display = "none";
   az.flaggedPanel.style.display = "none";
-  az.loadPanel.classList.add("collapsed");
   az.controlsPanel.classList.remove("collapsed");
-  az.analyzeStatus.textContent = `Loaded ${game.sans.length} ply. Click "Analyze Game" to grade it.`;
+  az.analyzeStatus.textContent = `Loaded ${Math.ceil(game.sans.length / 2)} moves. Tap Analyze to grade them.`;
+  az.tab.classList.add("hasGame");
+  setPane("moves");
   azFlipped = game.myColor === "white" || game.myColor === "black" ? game.myColor === "black" : az.sideSelect.value === "black";
   renderAnalyzeBoard();
   drawEvalGraph();

@@ -77,6 +77,36 @@ def main() -> int:
     else:
         print("no src-tauri/icons/android - run scripts/gen_android_icons.py")
 
+    for activity in (APP / "src" / "main" / "java").rglob("MainActivity.kt"):
+        kt = activity.read_text()
+        if "WindowInsetsControllerCompat" in kt:
+            continue
+        call = (
+            "        // enableEdgeToEdge picks the icon color from the phone theme, but the UI is always dark.\n"
+            "        WindowInsetsControllerCompat(window, window.decorView).run {\n"
+            "            isAppearanceLightStatusBars = false\n"
+            "            isAppearanceLightNavigationBars = false\n"
+            "        }\n"
+        )
+        if "super.onCreate(savedInstanceState)" in kt:
+            kt = kt.replace("super.onCreate(savedInstanceState)\n", "super.onCreate(savedInstanceState)\n" + call, 1)
+        else:
+            kt = re.sub(
+                r"class MainActivity\s*:\s*TauriActivity\(\)[ \t]*(\{\s*\})?",
+                "class MainActivity : TauriActivity() {\n"
+                "    override fun onCreate(savedInstanceState: Bundle?) {\n"
+                "        super.onCreate(savedInstanceState)\n" + call + "    }\n}",
+                kt,
+                count=1,
+            )
+        imports = ["androidx.core.view.WindowInsetsControllerCompat"]
+        if "Bundle?" in kt:
+            imports.append("android.os.Bundle")
+        add = "".join(f"import {i}\n" for i in imports if f"import {i}" not in kt)
+        kt = re.sub(r"(^package .*\n)", r"\1\n" + add.rstrip("\n") + "\n", kt, count=1, flags=re.MULTILINE)
+        activity.write_text(kt)
+        print(f"light system bar icons -> {activity}")
+
     gradle = APP / "build.gradle.kts"
     text = gradle.read_text()
     if "noCompress" in text:
