@@ -477,6 +477,7 @@ button.small.wide { width: 100%; }
 .flaggedItem .line { color: var(--muted); margin-top: 4px; font-family: monospace; font-size: 11.5px; }
 
 #evalGraphBox.panel { padding: 12px; }
+.evalHead { display: none; }
 /* Absolutely positioned in a fixed-height wrapper so the SVG's redraw size can't feed back into the layout width (resize loop). */
 #evalGraphWrap { position: relative; width: 100%; height: 150px; }
 #evalGraph {
@@ -594,6 +595,7 @@ body.is-dragging, body.is-dragging * {
 .puzzleLine .lineMoves { display: inline; }
 
 #recentList { display: flex; flex-direction: column; gap: 6px; }
+#recentPanel.collapsed > #recentList { display: none; }
 .recentItem {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; min-height: 48px;
   padding: 8px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel-bg-2);
@@ -733,6 +735,11 @@ summary.hiTitle { cursor: pointer; }
   .movesPanel.open .move-row:nth-child(even) { background: rgba(255, 255, 255, 0.03); }
   .movesPanel.open .move-num { padding: 0 8px 0 0; }
   .movesPanel.open .move-result { padding: 6px 0 0; border-top: 1px solid var(--border); }
+  .evalHead { display: flex; align-items: center; justify-content: space-between; }
+  #evalGraphBox { position: relative; }
+  #evalGraphBox.folded #evalGraphWrap { position: absolute; left: 12px; right: 12px; visibility: hidden; pointer-events: none; }
+  #evalGraphBox.folded #evalLine, #evalGraphBox.folded #evalLegend { display: none; }
+  #evalGraphBox:not(.folded) .movesToggle svg { transform: rotate(180deg); }
   :root:has(#moves-panel.open) {
     --cell: clamp(32px, min(
       calc(100vw / 8),

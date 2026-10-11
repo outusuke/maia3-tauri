@@ -172,7 +172,7 @@
           <button type="button" role="tab" aria-selected="false" data-pane="engine">Engine</button>
         </div>
 
-        <div class="panel collapsible paneMoves" id="recentPanel" style="display:none;">
+        <div class="panel collapsible collapsed paneMoves" id="recentPanel" style="display:none;">
           <h2>Recent games</h2>
           <div id="recentList"></div>
           <div class="btnRow"><button class="small" id="recentClearBtn">Clear list</button></div>
@@ -206,7 +206,11 @@
           <button id="analyzeGameBtn" class="primary" disabled>Analyze game</button>
         </div>
 
-        <div class="panel paneMoves" id="evalGraphBox" style="display:none;">
+        <div class="panel paneMoves folded" id="evalGraphBox" style="display:none;">
+          <div class="evalHead">
+            <b>Evaluation</b>
+            <button type="button" id="eval-toggle" class="movesToggle" aria-expanded="false" aria-label="Show evaluation graph"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+          </div>
           <div id="evalGraphWrap"><svg id="evalGraph"></svg></div>
           <div id="evalInfo"></div>
           <div id="evalLine" class="lineMoves"></div>

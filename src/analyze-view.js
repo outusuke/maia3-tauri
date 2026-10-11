@@ -693,6 +693,12 @@ function highlightCurrentMove() {
   else if (cr.bottom > lr.bottom) az.moveList.scrollTop += cr.bottom - lr.bottom;
 }
 
+az.evalToggle.addEventListener("click", () => {
+  const folded = az.evalBox.classList.toggle("folded");
+  az.evalToggle.setAttribute("aria-expanded", String(!folded));
+  az.evalToggle.setAttribute("aria-label", folded ? "Show evaluation graph" : "Hide evaluation graph");
+});
+
 az.movesToggle.addEventListener("click", () => {
   const open = az.moveListPanel.classList.toggle("open");
   az.movesToggle.setAttribute("aria-expanded", String(open));

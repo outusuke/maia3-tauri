@@ -4,6 +4,7 @@ const az = {
   flipBtn: document.getElementById("aFlipBtn"),
   evalGraph: document.getElementById("evalGraph"),
   evalBox: document.getElementById("evalGraphBox"),
+  evalToggle: document.getElementById("eval-toggle"),
   evalInfo: document.getElementById("evalInfo"),
   evalLine: document.getElementById("evalLine"),
   evalLegend: document.getElementById("evalLegend"),
