@@ -337,6 +337,7 @@ button.small.wide { width: 100%; }
   pointer-events: none;
 }
 
+.noDestinations .move-dot::before { display: none; }
 .move-dot::before {
   content: "";
   position: absolute;
