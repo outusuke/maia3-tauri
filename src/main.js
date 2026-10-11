@@ -102,10 +102,7 @@ async function restorePlay(p) {
     ],
   });
   gameStarted = true;
-  els.setupSummary.textContent = `${playerColor === "white" ? "White" : "Black"} · ${elo} · ${modelLabel(model)}`;
-  els.movesMeta.textContent = `You (${playerColor}) vs Maia-3 · ${elo} Elo`;
   els.setupPanel.classList.add("collapsed");
-  els.eloLiveHint.style.display = "";
   renderPlayBoard();
   renderMoveList();
   setStatus(statusBanner());

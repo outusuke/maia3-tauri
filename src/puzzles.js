@@ -86,7 +86,7 @@ function enterPuzzleMode() {
   puzzleSolved = 0;
   az.puzzlePanel.classList.add("show");
   document.getElementById("analyzeTab").classList.add("practicing");
-  if (az.puzzlePanel.scrollIntoView) az.puzzlePanel.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  az.side.scrollTo({ top: 0, behavior: "smooth" });
   loadPuzzle();
 }
 

@@ -96,7 +96,7 @@ async function loadRecentGame(g) {
     const parsed = await invoke("parse_pgn", { pgnText: g.pgn });
     loadAnalysisGame({ startFen: parsed.startFen, sans: parsed.sans, fens: parsed.fens, ucis: parsed.ucis, myColor: g.color });
     az.pgnInput.value = g.pgn;
-    document.querySelector("main").scrollTo({ top: 0, behavior: "smooth" });
+    az.side.scrollTo({ top: 0, behavior: "smooth" });
   } catch (err) {
     az.analyzeStatus.textContent = `Could not load that game: ${err}`;
   }
