@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -77,6 +79,8 @@ fn parse_info_line(line: &str) -> Option<PvLine> {
     }
 }
 
+pub const CANCELLED: &str = "cancelled";
+
 enum Link {
     Local(Sender<String>),
     #[cfg(target_os = "android")]
@@ -88,29 +92,34 @@ enum Link {
 pub struct Engine {
     link: Link,
     rx: Receiver<String>,
+    cancel: Option<Arc<AtomicBool>>,
 }
 
 impl Engine {
     pub fn spawn_maia(model: ModelSource, args: &[String]) -> Result<Self, String> {
         eprintln!("[engine] starting in-process Maia");
         let (tx, rx) = maia_core::spawn_thread(model, args.to_vec())?;
-        Engine { link: Link::Local(tx), rx }.handshake()
+        Engine { link: Link::Local(tx), rx, cancel: None }.handshake()
     }
 
     #[cfg(target_os = "android")]
     pub fn spawn_native_stockfish() -> Result<Self, String> {
         let (native, rx) = native_stockfish::start()?;
-        Engine { link: Link::Native(native), rx }.handshake()
+        Engine { link: Link::Native(native), rx, cancel: None }.handshake()
     }
 
     #[cfg(not(target_os = "android"))]
     pub fn spawn_process_stockfish(path: &Path) -> Result<Self, String> {
         let (process, rx) = process_stockfish::start(path)?;
-        let mut engine = Engine { link: Link::Process(process), rx }.handshake()?;
+        let mut engine = Engine { link: Link::Process(process), rx, cancel: None }.handshake()?;
         let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
         engine.send(&format!("setoption name Threads value {}", (cores / 2).clamp(1, 8)))?;
         engine.send("setoption name Hash value 128")?;
         Ok(engine)
+    }
+
+    pub fn set_cancel(&mut self, flag: Option<Arc<AtomicBool>>) {
+        self.cancel = flag;
     }
 
     fn handshake(mut self) -> Result<Self, String> {
@@ -228,12 +237,17 @@ impl Engine {
         let mut lines: HashMap<u32, PvLine> = HashMap::new();
 
         loop {
+            if self.cancel.as_ref().is_some_and(|c| c.load(Ordering::SeqCst)) {
+                self.resync();
+                return Err(CANCELLED.into());
+            }
             let now = Instant::now();
             if now >= deadline {
                 self.resync();
                 return Err("timed out waiting for analysis".into());
             }
-            match self.rx.recv_timeout(deadline - now) {
+            // short slices so a cancel lands even when Stockfish is quiet between depths
+            match self.rx.recv_timeout((deadline - now).min(Duration::from_millis(200))) {
                 Ok(line) => {
                     if line.starts_with("bestmove") {
                         break;
@@ -243,10 +257,7 @@ impl Engine {
                         }
                     }
                 }
-                Err(RecvTimeoutError::Timeout) => {
-                    self.resync();
-                    return Err("timed out waiting for analysis".into());
-                }
+                Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
                     return Err("engine closed unexpectedly during analysis".into());
                 }

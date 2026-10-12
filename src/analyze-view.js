@@ -593,6 +593,11 @@ async function ensureStockfish() {
 }
 
 az.analyzeBtn.addEventListener("click", async () => {
+  if (analyzingGame) {
+    az.analyzeBtn.disabled = true;
+    invoke("cancel_analysis").catch(() => {});
+    return;
+  }
   if (!loadedGame || loadedGame.sans.length === 0) return;
   az.analyzeBtn.disabled = true;
   az.analyzeStatus.textContent = "Checking Stockfish…";
@@ -601,6 +606,8 @@ az.analyzeBtn.addEventListener("click", async () => {
 
   az.analyzeStatus.textContent = "Analyzing… this can take a while at higher depth.";
   analyzingGame = true;
+  az.analyzeBtn.textContent = "Cancel";
+  az.analyzeBtn.disabled = false;
   engRefresh();
   const analysisDepthUsed = parseInt(az.depthSelect.value, 10);
   try {
@@ -620,9 +627,10 @@ az.analyzeBtn.addEventListener("click", async () => {
     az.flaggedPanel.style.display = "block";
     az.controlsPanel.classList.add("collapsed");
   } catch (err) {
-    az.analyzeStatus.textContent = "Analysis failed: " + err;
+    az.analyzeStatus.textContent = String(err) === "cancelled" ? "Analysis cancelled." : "Analysis failed: " + err;
   } finally {
     analyzingGame = false;
+    az.analyzeBtn.textContent = "Analyze game";
     az.analyzeBtn.disabled = false;
     engRefresh();
   }
