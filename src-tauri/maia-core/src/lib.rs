@@ -296,7 +296,7 @@ impl Config {
             }
             i += 1;
         }
-        c.multipv = c.multipv.clamp(1, 20);
+        c.multipv = c.multipv.clamp(0, 20);
         c.history = c.history.max(1);
         c
     }
@@ -462,7 +462,7 @@ impl MaiaEngine {
         out(format!("option name OppoElo type spin default {} min 0 max 5000", self.oppo_elo as i32));
         out(format!("option name Temperature type string default {}", self.temperature));
         out(format!("option name TopP type string default {}", self.top_p));
-        out(format!("option name MultiPV type spin default {} min 1 max 20", self.multipv));
+        out(format!("option name MultiPV type spin default {} min 0 max 20", self.multipv));
         out("uciok".into());
     }
 
@@ -501,7 +501,7 @@ impl MaiaEngine {
             }
             "multipv" => {
                 if let Ok(v) = value.parse::<usize>() {
-                    self.multipv = v.clamp(1, 20);
+                    self.multipv = v.clamp(0, 20);
                 }
             }
             _ => {}

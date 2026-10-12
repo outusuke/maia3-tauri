@@ -86,7 +86,7 @@ fn shared_session(app: &AppHandle, model: &str, history: usize) -> Result<Arc<ma
 }
 
 fn spawn_maia(app: &AppHandle, model: &str, extra_args: Vec<String>) -> Result<Engine, String> {
-    let mut args: Vec<String> = vec!["--history".into(), "8".into(), "--use-uci-history".into()];
+    let mut args: Vec<String> = vec!["--history".into(), "8".into(), "--use-uci-history".into(), "--multipv".into(), "0".into()];
     args.extend(extra_args);
     let history = maia_core::Config::from_args(&args).history;
     let session = shared_session(app, model, history)?;
