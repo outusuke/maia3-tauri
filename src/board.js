@@ -495,19 +495,42 @@ function findPieceMoves(prev, next) {
 
 function animatePieceMoves(el, moves) {
   if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const slides = [];
   for (const { from, to } of moves) {
     const img = el._squares[to]._img;
-    if (!img || !img.animate) continue;
+    if (!img) continue;
     const a = el._squares[from].getBoundingClientRect();
     const b = el._squares[to].getBoundingClientRect();
     if (!b.width) continue;
-    img.style.zIndex = 5;
-    const anim = img.animate(
-      [{ transform: `translate(${a.left - b.left}px, ${a.top - b.top}px)` }, { transform: "none" }],
-      { duration: MOVE_ANIM_MS, easing: "ease-out" },
-    );
-    anim.onfinish = anim.oncancel = () => { img.style.zIndex = ""; };
+    const r = img.getBoundingClientRect();
+    const clone = document.createElement("img");
+    clone.src = img.src;
+    clone.draggable = false;
+    clone.decoding = "sync";
+    clone.className = "slide-piece";
+    clone.style.width = r.width + "px";
+    clone.style.height = r.height + "px";
+    // the real piece stays hidden while the clone travels, so two copies are never painted
+    img.style.visibility = "hidden";
+    document.body.appendChild(clone);
+    slides.push({ img, clone, x0: r.left + a.left - b.left, y0: r.top + a.top - b.top, x1: r.left, y1: r.top });
   }
+  if (!slides.length) return;
+
+  const t0 = performance.now();
+  function step(now) {
+    const t = Math.min(1, (now - t0) / MOVE_ANIM_MS);
+    const k = 1 - Math.pow(1 - t, 3);
+    for (const s of slides) {
+      s.clone.style.transform = `translate(${s.x0 + (s.x1 - s.x0) * k}px, ${s.y0 + (s.y1 - s.y0) * k}px)`;
+    }
+    if (t < 1) { requestAnimationFrame(step); return; }
+    for (const s of slides) {
+      s.clone.remove();
+      s.img.style.visibility = "";
+    }
+  }
+  step(t0);
 }
 
 // squares and piece images are reused between calls so redundant redraws don't flash

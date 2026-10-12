@@ -334,6 +334,15 @@ button.small.wide { width: 100%; }
   transition: transform 60ms ease;
 }
 .square.dragging .piece { opacity: 0.35; }
+.slide-piece {
+  position: fixed;
+  left: 0;
+  top: 0;
+  object-fit: contain;
+  pointer-events: none;
+  z-index: 999;
+  will-change: transform;
+}
 
 .moveBadge {
   position: absolute;
