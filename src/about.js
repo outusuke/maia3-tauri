@@ -14,6 +14,25 @@ destinationsPref.addEventListener("change", () => {
   try { localStorage.setItem(DESTINATIONS_KEY, destinationsPref.checked ? "1" : "0"); } catch {}
 });
 
+const themeSelect = document.getElementById("theme-select");
+
+function showTheme() {
+  const current = window.maiaTheme.get();
+  for (const btn of themeSelect.querySelectorAll("button")) {
+    const on = btn.dataset.value === current;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-checked", String(on));
+  }
+}
+
+themeSelect.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-value]");
+  if (!btn) return;
+  window.maiaTheme.set(btn.dataset.value);
+  showTheme();
+});
+showTheme();
+
 async function loadAboutVersion() {
   try { aboutVersion.textContent = `Version ${await window.__TAURI__.core.invoke("app_version")}`; } catch {}
 }
