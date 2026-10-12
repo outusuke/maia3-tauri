@@ -3,8 +3,7 @@ on:
   workflow_dispatch:
     inputs:
       models:
-        description: "Models to bundle (space-separated ids from the models release)"
-        default: "maia3-23m"
+        description: "Models to bundle (space-separated ids from the models release; blank uses the MODELS file)"
   release:
     types: [published]
 jobs:
@@ -31,7 +30,7 @@ jobs:
       - name: Fetch ONNX Runtime, Stockfish and the Maia models
         env:
           GH_TOKEN: ${{ github.token }}
-          MODELS: ${{ inputs.models || 'maia3-23m' }}
+          MODELS: ${{ inputs.models || vars.MODELS }}
         run: python3 scripts/fetch_assets.py
 
       - name: Install Tauri CLI

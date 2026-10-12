@@ -5,8 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       models:
-        description: "Space-separated model ids"
-        default: "maia3-23m"
+        description: "Space-separated model ids (blank uses the MODELS file)"
       publish:
         description: "Upload to the 'models' release"
         type: boolean
@@ -31,9 +30,11 @@ jobs:
           pip install numpy python-chess huggingface_hub safetensors onnx onnxruntime
 
       - name: Export
+        env:
+          MODELS: ${{ inputs.models || vars.MODELS }}
         run: |
           mkdir -p out
-          for m in ${{ inputs.models }}; do
+          for m in ${MODELS:-$(cat MODELS)}; do
             python src-tauri/resources/export_maia3_onnx.py --model "$m" --output "out/$m.onnx" --validate
           done
           ls -lh out

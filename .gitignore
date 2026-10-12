@@ -3,6 +3,7 @@ src-tauri/target/
 src-tauri/maia-core/target/
 src-tauri/gen/
 src-tauri/resources/models/
+/*.onnx
 src-tauri/resources/ort/
 src-tauri/resources/stockfish/
 .DS_Store

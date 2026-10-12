@@ -73,6 +73,12 @@ def fetch_ort() -> None:
 def fetch_models(ids: list[str]) -> None:
     clear(MODELS_DIR)
     for model in ids:
+        # repo-root copy takes priority over the release
+        local = ROOT / f"{model}.onnx"
+        if local.is_file():
+            shutil.copy2(local, MODELS_DIR / local.name)
+            print(f"using {local}")
+            continue
         r = subprocess.run(
             ["gh", "release", "download", "models", "--pattern", f"{model}.onnx", "--dir", str(MODELS_DIR), "--clobber"]
         )
@@ -131,7 +137,8 @@ def main() -> int:
     if args.stockfish or everything:
         fetch_stockfish()
     if args.models is not None or everything:
-        fetch_models(args.models or os.environ.get("MODELS", "maia3-23m").split())
+        listed = (ROOT / "MODELS").read_text().split()
+        fetch_models(args.models or os.environ.get("MODELS", "").split() or listed)
     return 0
 
 

@@ -4,8 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       models:
-        description: "Models to bundle into the APK (space-separated ids, must exist in the models release)"
-        default: "maia3-23m"
+        description: "Models to bundle into the APK (space-separated ids, must exist in the models release; blank uses the MODELS file)"
       skip_tests:
         description: "Skip the maia-core tests"
         type: boolean
@@ -35,7 +34,7 @@ jobs:
       contents: write
     env:
       NDK_VERSION: "30.0.16248370"
-      MODELS: ${{ inputs.models || 'maia3-23m' }}
+      MODELS: ${{ inputs.models || vars.MODELS }}
     steps:
       - uses: actions/checkout@v7
 
@@ -88,7 +87,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for m in $MODELS; do
+          for m in ${MODELS:-$(cat "$GITHUB_WORKSPACE/MODELS")}; do
             gh release download models --pattern "$m.onnx" --dir bundled-models
           done
           ls -lh bundled-models
@@ -137,7 +136,7 @@ jobs:
       - name: Check the libraries and uncompressed models made it into the APK
         run: |
           unzip -l maia-chess-arm64.apk | grep -E 'lib/arm64-v8a/(libmultistockfish_light|libonnxruntime|libmaia_chess_lib)\.so'
-          for m in $MODELS; do
+          for m in ${MODELS:-$(cat "$GITHUB_WORKSPACE/MODELS")}; do
             unzip -v maia-chess-arm64.apk "assets/models/$m.onnx" | grep Stored
           done
 

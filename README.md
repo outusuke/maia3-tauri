@@ -24,7 +24,7 @@ Chess app (Tauri v2 + Rust) for playing [Maia-3](https://github.com/CSSLab/maia3
 Everything is bundled, so there is no setup screen and nothing is downloaded at runtime. Fetch the assets once, then run:
 
 ```sh
-python3 scripts/fetch_assets.py            # ONNX Runtime, Stockfish, maia3-23m
+python3 scripts/fetch_assets.py            # ONNX Runtime, Stockfish, the models in MODELS
 python3 scripts/fetch_assets.py --models maia3-5m maia3-23m   # pick other models
 cargo tauri dev
 ```
@@ -49,7 +49,7 @@ arm64 only. Stockfish, ONNX Runtime and the models are packed into the APK; noth
 
 **CI** (GitHub Actions):
 1. run **Models** once (exports + publishes `.onnx` to the `models` release)
-2. run **Android** (`models` input, default `maia3-5m`) → artifact `maia-chess-android`
+2. run **Android** (`models` input, default: the `MODELS` file) → artifact `maia-chess-android`
 3. optional signing secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` (else a throwaway key; can't update across keys)
 
 **local** (Android Studio, `NDK_HOME` set, `rustup target add aarch64-linux-android`):
