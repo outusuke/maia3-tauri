@@ -29,13 +29,17 @@ impl Session {
         let (opt_level, threads) = if cfg!(target_os = "android") {
             (GraphOptimizationLevel::Level1, 2)
         } else {
-            (GraphOptimizationLevel::Level3, 4)
+            // hyperthreads don't speed up the matmuls, so count physical cores
+            let cores = std::thread::available_parallelism().map_or(2, |n| n.get());
+            (GraphOptimizationLevel::Level3, (cores / 2).clamp(1, 4))
         };
         let mut builder = OrtSession::builder()
             .map_err(|e| format!("could not start ONNX Runtime (is libonnxruntime available?): {e}"))?
             .with_optimization_level(opt_level)
             .map_err(e2s)?
             .with_intra_threads(threads)
+            .map_err(e2s)?
+            .with_intra_op_spinning(false)
             .map_err(e2s)?;
         #[cfg(target_os = "android")]
         {
