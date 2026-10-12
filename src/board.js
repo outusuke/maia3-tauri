@@ -414,6 +414,7 @@ function onSquarePointerDown(e, boardEl, sq, piece, opts) {
     ghostSrc: draggable ? pieceImageSrc(piece) : null,
     onDrop: (kind, value) => {
       if (kind === "square" && value !== sq && opts.onDropMove) {
+        boardEl._dragMove = { from: sq, to: value };
         opts.onDropMove(sq, value);
       } else if (kind === "tray" && opts.onDropToTray) {
         opts.onDropToTray(sq);
@@ -458,11 +459,64 @@ function buildBoardSquares(el, files, ranks) {
   }
 }
 
+const MOVE_ANIM_MS = 180;
+
+function findPieceMoves(prev, next) {
+  const changed = [];
+  for (const file of FILES) {
+    for (const rank of RANKS) {
+      const sq = file + rank;
+      if (prev[sq] !== next[sq]) changed.push(sq);
+    }
+  }
+  // anything past castling or en passant is a position jump, not a move
+  if (changed.length > 4) return [];
+
+  const vacated = changed.filter((sq) => prev[sq]);
+  const used = new Set();
+  const moves = [];
+  for (const to of changed) {
+    const piece = next[to];
+    if (!piece) continue;
+    const pawn = piece === piece.toUpperCase() ? "P" : "p";
+    let sources = vacated.filter((sq) => sq !== to && !used.has(sq) && prev[sq] === piece);
+    if (!sources.length) sources = vacated.filter((sq) => !used.has(sq) && prev[sq] === pawn);
+    if (!sources.length) continue;
+    const dist = (sq) => Math.max(
+      Math.abs(FILES.indexOf(sq[0]) - FILES.indexOf(to[0])),
+      Math.abs(parseInt(sq[1], 10) - parseInt(to[1], 10)),
+    );
+    const from = sources.reduce((a, b) => (dist(b) < dist(a) ? b : a));
+    used.add(from);
+    moves.push({ from, to });
+  }
+  return moves;
+}
+
+function animatePieceMoves(el, moves) {
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  for (const { from, to } of moves) {
+    const img = el._squares[to]._img;
+    if (!img || !img.animate) continue;
+    const a = el._squares[from].getBoundingClientRect();
+    const b = el._squares[to].getBoundingClientRect();
+    if (!b.width) continue;
+    img.style.zIndex = 5;
+    const anim = img.animate(
+      [{ transform: `translate(${a.left - b.left}px, ${a.top - b.top}px)` }, { transform: "none" }],
+      { duration: MOVE_ANIM_MS, easing: "ease-out" },
+    );
+    anim.onfinish = anim.oncancel = () => { img.style.zIndex = ""; };
+  }
+}
+
 // squares and piece images are reused between calls so redundant redraws don't flash
 function renderChessBoard(el, fen, opts) {
   opts = opts || {};
   const board = fenToBoard(fen);
   const flipped = !!opts.flipped;
+  const prevBoard = el._board;
+  const prevFlipped = el._flipped;
 
   el._flipped = flipped;
   el._autoShapes = opts.arrows || [];
@@ -528,6 +582,15 @@ function renderChessBoard(el, fen, opts) {
         div._badge.remove();
         div._badge = null;
       }
+    }
+  }
+
+  if (prevBoard && prevFlipped === flipped) {
+    const moves = findPieceMoves(prevBoard, board);
+    if (moves.length) {
+      const dropped = el._dragMove;
+      el._dragMove = null;
+      animatePieceMoves(el, moves.filter((m) => !dropped || m.from !== dropped.from || m.to !== dropped.to));
     }
   }
 
