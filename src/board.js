@@ -96,8 +96,7 @@ function beginPointerDrag(pointerEvent, spec) {
       applyDragClasses();
     }
     ev.preventDefault();
-    ghost.style.left = (ev.clientX - size / 2) + "px";
-    ghost.style.top = (ev.clientY - size / 2) + "px";
+    ghost.style.transform = `translate(${ev.clientX - size / 2}px, ${ev.clientY - size / 2}px)`;
     setOver(elementUnder(ev.clientX, ev.clientY));
   }
 
