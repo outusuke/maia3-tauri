@@ -431,6 +431,8 @@ button.small.wide { width: 100%; }
 }
 .drag-ghost {
   position: fixed;
+  left: 0; top: 0;
+  will-change: transform;
   width: 52px; height: 52px;
   pointer-events: none;
   z-index: 1000;

@@ -4,7 +4,9 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Maia Chess</title>
+  <script src="theme.js"></script>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="theme-skeuo.css" />
 </head>
 <body>
   <div id="app">
@@ -28,7 +30,7 @@
       <section id="board-wrap" class="boardCol">
         <div id="status-line" class="statusLine" role="status">Start a game to play Maia-3.</div>
         <div class="materialBar" id="materialTop"></div>
-        <div id="board" aria-label="chess board"></div>
+        <div class="boardFrame"><div id="board" aria-label="chess board"></div></div>
         <div class="materialBar" id="materialBottom"></div>
         <div class="dock" role="toolbar" aria-label="Board controls">
           <button type="button" class="dockBtn" id="flip-btn" title="Flip board (F)" aria-label="Flip board"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3"/></svg></button>
@@ -68,7 +70,7 @@
               <span id="active-model-name">Checking…</span>
               <select id="model-select" hidden></select>
             </div>
-            <input type="range" id="elo-slider" min="500" max="2500" step="50" value="1500" />
+            <input type="range" id="elo-slider" min="600" max="2600" step="50" value="1500" />
             <p class="hint" id="no-model-hint" style="display:none;">This build has no Maia-3 model bundled.</p>
           </div>
 
@@ -137,7 +139,7 @@
       <section id="analyze-board-wrap" class="boardCol">
         <div id="analyzeStatus" class="statusLine" role="status">Open a recent game or paste a PGN.</div>
         <div class="materialBar" id="aMaterialTop"></div>
-        <div id="analyzeBoard" aria-label="analysis board"></div>
+        <div class="boardFrame"><div id="analyzeBoard" aria-label="analysis board"></div></div>
         <div class="materialBar" id="aMaterialBottom"></div>
         <div class="dock" role="toolbar" aria-label="Board controls">
           <button type="button" class="dockBtn" id="aFlipBtn" title="Flip board (F)" aria-label="Flip board"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3"/></svg></button>
@@ -359,6 +361,11 @@
       <p>Play chess against Maia-3, an engine that plays like a human at the Elo you pick. Everything runs on this device.</p>
       <h3>Board</h3>
       <label class="checkRow"><input type="checkbox" id="pref-destinations" checked /> Show piece destinations</label>
+      <h3>Theme</h3>
+      <div class="segmented" id="theme-select" role="radiogroup" aria-label="Theme">
+        <button type="button" role="radio" data-value="minimal" aria-checked="true" class="active">Minimal</button>
+        <button type="button" role="radio" data-value="skeuo" aria-checked="false">Skeuomorphic</button>
+      </div>
       <h3>Built with</h3>
       <ul>
         <li>Maia-3<span>The human-like engine, by CSSLab</span></li>

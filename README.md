@@ -6,7 +6,7 @@ Chess app (Tauri v2 + Rust) for playing [Maia-3](https://github.com/CSSLab/maia3
 
 ## features
 
-- **play** vs Maia-3: side, Elo 500–2500 (changeable mid-game), temperature/top-p, custom FEN
+- **play** vs Maia-3: side, Elo 600–2600 (changeable mid-game), temperature/top-p, custom FEN
 - **analyze** a PGN: Stockfish grades every move; "Engine" toggle for live eval
 - **practice**: mistakes become puzzles
 
