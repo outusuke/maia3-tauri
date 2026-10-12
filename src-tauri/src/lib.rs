@@ -16,7 +16,7 @@ use engine::Engine;
 use game::{Game, GameState};
 use bundled::list_models;
 use std::str::FromStr;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
 use std::time::{Duration, Instant};
 use tauri::{AppHandle, Manager, State};
@@ -30,9 +30,14 @@ struct AppState {
     engine_spec: Mutex<Option<EngineSpec>>,
     // own processes, so Analyze doesn't disturb a game in progress
     stockfish: Mutex<Option<Engine>>,
+    // the UI starts Stockfish once and never asks again, so a reaped one has to come back on demand
+    stockfish_wanted: AtomicBool,
+    stockfish_last_used: Mutex<Instant>,
+    analysis_cancel: Arc<AtomicBool>,
     insights: Mutex<Option<Engine>>,
     insights_model: Mutex<Option<String>>,
     insights_last_used: Mutex<Instant>,
+    engine_last_used: Mutex<Instant>,
 }
 
 #[derive(Clone)]
@@ -43,6 +48,8 @@ struct EngineSpec {
 }
 
 const INSIGHTS_IDLE: Duration = Duration::from_secs(120);
+// longer than insights since a player can sit on a move
+const ENGINE_IDLE: Duration = Duration::from_secs(300);
 const STALE_MOVE: &str = "game changed while the engine was thinking";
 
 // the UI tops out at depth 18 and 5 lines; these only stop a bad value from hanging Stockfish
@@ -83,6 +90,35 @@ fn shared_session(app: &AppHandle, model: &str, history: usize) -> Result<Arc<ma
     drop(source);
     *cache = Some((model.to_string(), history, Arc::downgrade(&session)));
     Ok(session)
+}
+
+fn touch(clock: &Mutex<Instant>) {
+    *clock.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
+}
+
+fn spawn_stockfish(app: &AppHandle) -> Result<Engine, String> {
+    #[cfg(target_os = "android")]
+    {
+        let _ = app;
+        Engine::spawn_native_stockfish()
+    }
+    #[cfg(not(target_os = "android"))]
+    Engine::spawn_process_stockfish(&bundled::stockfish_binary(app)?)
+}
+
+fn with_stockfish<T>(
+    app: &AppHandle,
+    state: &AppState,
+    run: impl FnOnce(&mut Engine) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
+    if slot.is_none() && state.stockfish_wanted.load(Ordering::SeqCst) {
+        *slot = Some(spawn_stockfish(app)?);
+    }
+    let sf = slot.as_mut().ok_or("stockfish is not running")?;
+    let result = run(sf);
+    touch(&state.stockfish_last_used);
+    result
 }
 
 fn spawn_maia(app: &AppHandle, model: &str, extra_args: Vec<String>) -> Result<Engine, String> {
@@ -199,6 +235,7 @@ fn start_engine(
     *slot = Some(eng);
     *state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner) =
         Some(EngineSpec { model: command, elo, args: extra_args });
+    touch(&state.engine_last_used);
     Ok(())
 }
 
@@ -230,6 +267,7 @@ fn human_moves(
 
 #[tauri::command(async)]
 fn score_human_moves(
+    app: AppHandle,
     state: State<AppState>,
     start_fen: String,
     ucis: Vec<String>,
@@ -239,9 +277,7 @@ fn score_human_moves(
     check_len("moves", ucis.len(), MAX_PLIES)?;
     check_len("candidates", moves.len(), MAX_CANDIDATES)?;
     let depth = depth.unwrap_or(10).clamp(1, MAX_DEPTH);
-    let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
-    let sf = slot.as_mut().ok_or("stockfish is not running")?;
-    insights::score_moves(sf, &start_fen, &ucis, &moves, depth)
+    with_stockfish(&app, state.inner(), |sf| insights::score_moves(sf, &start_fen, &ucis, &moves, depth))
 }
 
 #[tauri::command]
@@ -314,7 +350,9 @@ fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, Stri
         if let Some(elo) = elo {
             eng.set_elo(elo)?;
         }
-        eng.best_move(&start_fen, &moves, Duration::from_secs(30))?
+        let mv = eng.best_move(&start_fen, &moves, Duration::from_secs(30))?;
+        touch(&state.engine_last_used);
+        mv
     };
 
     let gs = {
@@ -339,15 +377,11 @@ fn undo_move(state: State<AppState>) -> Result<GameState, String> {
 
 #[tauri::command(async)]
 fn start_stockfish(app: AppHandle, state: State<AppState>) -> Result<(), String> {
-    #[cfg(target_os = "android")]
-    let _ = &app;
     let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     *slot = None;
-    #[cfg(target_os = "android")]
-    let eng = Engine::spawn_native_stockfish()?;
-    #[cfg(not(target_os = "android"))]
-    let eng = Engine::spawn_process_stockfish(&bundled::stockfish_binary(&app)?)?;
-    *slot = Some(eng);
+    *slot = Some(spawn_stockfish(&app)?);
+    state.stockfish_wanted.store(true, Ordering::SeqCst);
+    touch(&state.stockfish_last_used);
     Ok(())
 }
 
@@ -372,6 +406,7 @@ struct LiveLine {
 
 #[tauri::command(async)]
 fn engine_lines(
+    app: AppHandle,
     state: State<AppState>,
     fen: String,
     depth: u32,
@@ -382,9 +417,9 @@ fn engine_lines(
     let board = Board::from_str(&fen).map_err(|e| format!("invalid FEN: {e}"))?;
     let sign = if board.side_to_move() == chess::Color::White { 1 } else { -1 };
 
-    let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
-    let eng = slot.as_mut().ok_or("stockfish is not running")?;
-    let mut lines = eng.analyze(&fen, depth, multipv, Duration::from_secs(60))?;
+    let mut lines = with_stockfish(&app, state.inner(), |eng| {
+        eng.analyze(&fen, depth, multipv, Duration::from_secs(60))
+    })?;
     lines.sort_by_key(|l| l.multipv);
 
     Ok(lines
@@ -407,6 +442,7 @@ fn engine_lines(
 /// Backs "Analyze This Game" so a played game skips the PGN round trip.
 #[tauri::command(async)]
 fn analyze_moves(
+    app: AppHandle,
     state: State<AppState>,
     sans: Vec<String>,
     start_fen: Option<String>,
@@ -426,9 +462,18 @@ fn analyze_moves(
         config.multipv = mpv.clamp(1, MAX_MULTIPV);
     }
 
-    let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
-    let eng = slot.as_mut().ok_or("stockfish is not running")?;
-    analysis::analyze_game(eng, &parsed, start_board, &config)
+    state.analysis_cancel.store(false, Ordering::SeqCst);
+    with_stockfish(&app, state.inner(), |eng| {
+        eng.set_cancel(Some(state.analysis_cancel.clone()));
+        let result = analysis::analyze_game(eng, &parsed, start_board, &config);
+        eng.set_cancel(None);
+        result
+    })
+}
+
+#[tauri::command]
+fn cancel_analysis(state: State<AppState>) {
+    state.analysis_cancel.store(true, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -478,9 +523,13 @@ pub fn run() {
             engine: Mutex::new(None),
             engine_spec: Mutex::new(None),
             stockfish: Mutex::new(None),
+            stockfish_wanted: AtomicBool::new(false),
+            stockfish_last_used: Mutex::new(Instant::now()),
+            analysis_cancel: Arc::new(AtomicBool::new(false)),
             insights: Mutex::new(None),
             insights_model: Mutex::new(None),
             insights_last_used: Mutex::new(Instant::now()),
+            engine_last_used: Mutex::new(Instant::now()),
         })
         .setup(|app| {
             let handle = app.handle().clone();
@@ -497,6 +546,34 @@ pub fn run() {
                     if let Ok(mut slot) = state.insights.try_lock() {
                         if slot.is_some() {
                             eprintln!("[insights] idle, shutting down");
+                            *slot = None;
+                        }
+                    }
+                }
+                let engine_idle = state
+                    .engine_last_used
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .elapsed()
+                    > ENGINE_IDLE;
+                if engine_idle {
+                    if let Ok(mut slot) = state.engine.try_lock() {
+                        if slot.is_some() {
+                            eprintln!("[engine] idle, shutting down");
+                            *slot = None;
+                        }
+                    }
+                }
+                let stockfish_idle = state
+                    .stockfish_last_used
+                    .lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .elapsed()
+                    > ENGINE_IDLE;
+                if stockfish_idle {
+                    if let Ok(mut slot) = state.stockfish.try_lock() {
+                        if slot.is_some() {
+                            eprintln!("[stockfish] idle, shutting down");
                             *slot = None;
                         }
                     }
@@ -522,6 +599,7 @@ pub fn run() {
             stockfish_running,
             engine_lines,
             analyze_moves,
+            cancel_analysis,
             parse_pgn,
             validate_fen,
             scratch_legal_targets,
