@@ -169,6 +169,11 @@
           <div id="variationLine" class="lineMoves"></div>
         </div>
 
+        <div id="practiceResumeBar" style="display:none;">
+          <span>Practice paused</span>
+          <button class="small" id="practiceResumeBtn">Back to practice</button>
+        </div>
+
         <div class="paneTabs" id="paneTabs" role="tablist" aria-label="Review panels">
           <button type="button" role="tab" class="active" aria-selected="true" data-pane="moves">Moves</button>
           <button type="button" role="tab" aria-selected="false" data-pane="engine">Engine</button>
@@ -249,6 +254,7 @@
             <button class="small" id="puzzleBackBtn" style="display:none;">↩ Back to my puzzle</button>
             <button class="small" id="puzzleRevealBtn">Reveal answer</button>
             <button class="small" id="puzzleNextBtn" style="display:none;">Next puzzle →</button>
+            <button class="small" id="puzzleAnalyzeBtn" style="display:none;" title="Analyze this mistake on the review board; practice stays paused">Analyze move</button>
             <button class="small" id="puzzleExitBtn">Exit</button>
           </div>
           <div class="actions" id="puzzleDoneActions" style="display:none;">

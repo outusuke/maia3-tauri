@@ -252,6 +252,11 @@ button.small.wide { width: 100%; }
   border-radius: 12px; background: var(--panel-bg-2); font-size: 12.5px;
   box-shadow: 0 0 0 1px var(--border);
 }
+#practiceResumeBar {
+  position: sticky; top: 0; z-index: 2; order: -2; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 12px; border-radius: 12px; background: var(--panel-bg-2); font-size: 12.5px; font-weight: 600;
+  box-shadow: 0 0 0 1px var(--border);
+}
 .variationHead { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-weight: 600; }
 #variationLine { font-family: monospace; font-size: 12.5px; }
 
@@ -615,6 +620,7 @@ body.is-dragging, body.is-dragging * {
 .flaggedItem .line.lineMoves { font-family: monospace; font-size: 12px; margin-top: 4px; }
 .puzzleLine { margin-top: 6px; font-family: monospace; }
 .puzzleLine .lineMoves { display: inline; }
+.puzzleReset { margin-top: 8px; }
 
 #recentList { display: flex; flex-direction: column; gap: 6px; }
 #recentPanel.collapsed > #recentList { display: none; }
