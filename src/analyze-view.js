@@ -456,7 +456,7 @@ document.addEventListener("keydown", (e) => {
       renderAnalyzeBoard();
     } else if (puzzleMode) {
       e.preventDefault();
-      exitPuzzleMode();
+      leavePuzzleAtMistake();
     }
     return;
   }

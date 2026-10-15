@@ -9,6 +9,8 @@ let puzzleLegalTargets = [];
 let puzzleViewIdx = 0;
 // Line explored after solving: starts as the solution, branches when you move a piece.
 let puzzleExp = null;
+let puzzleMain = null;
+let practicePaused = null;
 
 function puzzleCurFen() {
   return puzzleLocked && puzzleExp ? puzzleExp.fens[puzzleViewIdx] : puzzleFen;
@@ -32,6 +34,19 @@ function lockPuzzle(puzzle) {
     ucis: clickable ? puzzle.bestLineUci.slice() : [],
     sans: clickable ? (puzzle.bestLineSan || []).slice() : [],
   };
+  puzzleMain = {
+    fens: puzzleExp.fens.slice(), ucis: puzzleExp.ucis.slice(), sans: puzzleExp.sans.slice(),
+  };
+}
+
+function resetPuzzleLine() {
+  if (!puzzleLocked || !puzzleMain) return;
+  puzzleExp = { fens: puzzleMain.fens.slice(), ucis: puzzleMain.ucis.slice(), sans: puzzleMain.sans.slice() };
+  puzzleViewIdx = 0;
+  puzzleSelected = null;
+  puzzleLegalTargets = [];
+  refreshPuzzleChips();
+  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
 }
 
 function refreshPuzzleChips() {
@@ -42,6 +57,8 @@ function refreshPuzzleChips() {
     renderPuzzleBoard(sideToMove(puzzleFen) === "black");
   });
   setActiveChip(moves, puzzleViewIdx);
+  const reset = az.puzzleFeedback.querySelector(".puzzleReset");
+  if (reset) reset.style.display = puzzleExp.ucis.join() === puzzleMain.ucis.join() ? "none" : "";
 }
 
 function playPuzzleFreeMove(mv) {
@@ -75,6 +92,7 @@ function isAcceptable(puzzle, uci) {
 
 function enterPuzzleMode() {
   if (puzzles.length === 0) return;
+  clearPracticePause();
   puzzleMode = true;
   variation = null;
   az.variationBar.style.display = "none";
@@ -99,11 +117,13 @@ function loadPuzzle(browsing = false) {
   puzzleLegalTargets = [];
   puzzleLocked = false;
   puzzleExp = null;
+  puzzleMain = null;
   puzzleViewIdx = 0;
   az.puzzleFeedback.className = "";
   az.puzzleFeedback.textContent = "";
   az.puzzleRevealBtn.style.display = "";
   az.puzzleNextBtn.style.display = "none";
+  az.puzzleAnalyzeBtn.style.display = "none";
   az.puzzleActiveActions.style.display = "flex";
   az.puzzleDoneActions.style.display = "none";
   const mover = sideToMove(puzzleFen);
@@ -233,6 +253,12 @@ function fillPuzzleFeedback(prefix, puzzle) {
   moves.className = "lineMoves";
   line.append(label, moves);
   box.appendChild(line);
+  const reset = document.createElement("button");
+  reset.className = "small puzzleReset";
+  reset.textContent = "↺ Back to solution line";
+  reset.style.display = "none";
+  reset.addEventListener("click", resetPuzzleLine);
+  box.appendChild(reset);
   const hint = document.createElement("div");
   hint.className = "hint";
   hint.textContent = "Move pieces to explore other lines. Turn on the Engine panel to see what else was possible.";
@@ -310,6 +336,7 @@ async function puzzleShowHuman(puzzle) {
 function showPuzzleNext() {
   az.puzzleRevealBtn.style.display = "none";
   az.puzzleNextBtn.style.display = "";
+  az.puzzleAnalyzeBtn.style.display = "";
   az.puzzleNextBtn.textContent = puzzleIndex + 1 < puzzles.length ? "Next puzzle →" : "Finish";
 }
 
@@ -351,8 +378,20 @@ az.puzzleBackBtn.addEventListener("click", () => {
   loadPuzzle();
 });
 
-az.puzzleExitBtn.addEventListener("click", exitPuzzleMode);
-az.puzzleExitBtn2.addEventListener("click", exitPuzzleMode);
+az.puzzleExitBtn.addEventListener("click", leavePuzzleAtMistake);
+az.puzzleExitBtn2.addEventListener("click", leavePuzzleAtMistake);
+az.puzzleAnalyzeBtn.addEventListener("click", () => {
+  const puzzle = puzzles[puzzleIndex];
+  leavePuzzleAtMistake();
+  practicePaused = puzzle;
+  az.practiceResumeBar.style.display = "flex";
+  setPane("engine");
+  if (!eng.enable.checked) {
+    eng.arrows.checked = true;
+    eng.arrows.dispatchEvent(new Event("change"));
+  }
+});
+az.practiceResumeBtn.addEventListener("click", resumePractice);
 az.puzzleRestartBtn.addEventListener("click", enterPuzzleMode);
 
 // --pp drives the progress bar in style.css
@@ -368,7 +407,38 @@ function finishPuzzles() {
   az.puzzlePrompt.textContent = "";
 }
 
+function leavePuzzleAtMistake() {
+  const i = analysis ? analysis.indexOf(puzzles[puzzleIndex]) : -1;
+  if (i >= 0) azViewPly = i + 1; // same ply the Mistakes list opens on
+  exitPuzzleMode();
+}
+
+function resumePractice() {
+  const puzzle = practicePaused;
+  clearPracticePause();
+  if (!puzzle || puzzles[puzzleIndex] !== puzzle) {
+    enterPuzzleMode();
+    return;
+  }
+  puzzleMode = true;
+  variation = null;
+  az.variationBar.style.display = "none";
+  hiToken++;
+  hi.body.style.display = "none";
+  hi.status.textContent = "";
+  az.puzzlePanel.classList.add("show");
+  document.getElementById("analyzeTab").classList.add("practicing");
+  az.side.scrollTo({ top: 0, behavior: "smooth" });
+  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+}
+
+function clearPracticePause() {
+  practicePaused = null;
+  az.practiceResumeBar.style.display = "none";
+}
+
 function exitPuzzleMode() {
+  clearPracticePause();
   puzzleMode = false;
   az.puzzlePanel.classList.remove("show");
   document.getElementById("analyzeTab").classList.remove("practicing");
