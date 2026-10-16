@@ -101,7 +101,7 @@ pub fn start() -> Result<(NativeStockfish, Receiver<String>), String> {
         .spawn(move || {
             let code = unsafe { (api.run)() };
             if code != 0 {
-                eprintln!("[stockfish] exited with {code}: {}", last_error(api));
+                log::error!("[stockfish] exited with {code}: {}", last_error(api));
             }
             RUNNING.store(false, Ordering::SeqCst);
             let _ = exit_tx.send(());
@@ -135,7 +135,7 @@ impl Drop for NativeStockfish {
     fn drop(&mut self) {
         match self.exited.recv_timeout(QUIT_GRACE) {
             Err(RecvTimeoutError::Timeout) => {
-                eprintln!("[stockfish] still running after quit, leaving it");
+                log::warn!("[stockfish] still running after quit, leaving it");
             }
             _ => {
                 if let Some(reader) = self.reader.take() {

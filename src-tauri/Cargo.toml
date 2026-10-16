@@ -14,6 +14,8 @@ maia-core = { path = "maia-core" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chess = "3.2"
+log = "0.4"
+tauri-plugin-log = "2"
 
 [target.'cfg(target_os = "android")'.dependencies]
 zip = { version = "8", default-features = false, features = ["deflate"] }

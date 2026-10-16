@@ -157,6 +157,7 @@ async function restoreSession() {
     await refreshActiveModelUI();
     if (s.play) await restorePlay(s.play);
   } catch (err) {
+    log.error(`session restore failed: ${err}`);
     setStatus(`Could not restore the last session: ${err}`);
   }
   // restore didn't bring the game back, so offer a new one after all
@@ -166,9 +167,11 @@ async function restoreSession() {
 
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {
+    log.info("app hidden");
     saveSession();
     invoke("suspend_engines").catch(() => {});
   } else if (gameStarted && !isGameOver()) {
+    log.info("app visible, resuming engines");
     invoke("resume_engines").catch(() => {});
   }
 });
