@@ -97,7 +97,7 @@ pub struct Engine {
 
 impl Engine {
     pub fn spawn_maia(model: ModelSource, args: &[String]) -> Result<Self, String> {
-        eprintln!("[engine] starting in-process Maia");
+        log::info!("[engine] starting in-process Maia");
         let (tx, rx) = maia_core::spawn_thread(model, args.to_vec())?;
         Engine { link: Link::Local(tx), rx, cancel: None }.handshake()
     }
@@ -123,6 +123,7 @@ impl Engine {
     }
 
     fn handshake(mut self) -> Result<Self, String> {
+        let started = Instant::now();
         self.send("uci")?;
         if self.wait_for("uciok", Duration::from_secs(30)).is_none() {
             return Err("engine did not respond to 'uci' (uciok not received)".into());
@@ -136,6 +137,7 @@ impl Engine {
             );
         }
 
+        log::debug!("[engine] handshake took {} ms", started.elapsed().as_millis());
         Ok(self)
     }
 
@@ -164,7 +166,11 @@ impl Engine {
                         return Some(line);
                     }
                 }
-                Err(_) => return None,
+                Err(RecvTimeoutError::Timeout) => return None,
+                Err(RecvTimeoutError::Disconnected) => {
+                    log::warn!("[engine] output closed while waiting for '{prefix}'");
+                    return None;
+                }
             }
         }
     }
@@ -176,12 +182,19 @@ impl Engine {
 
     // nodes 1: Maia is one forward pass, search depth changes nothing; full move list feeds --use-uci-history
     pub fn best_move(&mut self, start_fen: &str, moves: &[String], timeout: Duration) -> Result<String, String> {
+        let started = Instant::now();
         self.send(&position_command(start_fen, moves))?;
         self.send("go nodes 1")?;
         let Some(line) = self.wait_for("bestmove", timeout) else {
+            log::warn!(
+                "[engine] no bestmove after {}s (start {start_fen}, {} moves)",
+                timeout.as_secs(),
+                moves.len()
+            );
             self.resync();
             return Err("timed out waiting for bestmove".into());
         };
+        log::debug!("[engine] {line} ({} moves, {} ms)", moves.len(), started.elapsed().as_millis());
         line.split_whitespace()
             .nth(1)
             .map(|s| s.to_string())
@@ -227,8 +240,11 @@ impl Engine {
 
     // a search that outlived its timeout would otherwise leave a stray `bestmove` for the next request to pick up
     fn resync(&mut self) {
-        if self.send("stop").is_ok() && self.send("isready").is_ok() {
-            self.wait_for("readyok", Duration::from_secs(5));
+        if self.send("stop").is_ok()
+            && self.send("isready").is_ok()
+            && self.wait_for("readyok", Duration::from_secs(5)).is_none()
+        {
+            log::warn!("[engine] no readyok after stop, the engine may be stuck");
         }
     }
 
@@ -243,6 +259,7 @@ impl Engine {
             }
             let now = Instant::now();
             if now >= deadline {
+                log::warn!("[engine] analysis timed out after {}s", timeout.as_secs());
                 self.resync();
                 return Err("timed out waiting for analysis".into());
             }
@@ -259,6 +276,7 @@ impl Engine {
                 }
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => {
+                    log::error!("[engine] output closed mid-search, the process likely died");
                     return Err("engine closed unexpectedly during analysis".into());
                 }
             }

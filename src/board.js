@@ -1,4 +1,17 @@
-const invoke = window.__TAURI__.core.invoke;
+const rawInvoke = window.__TAURI__.core.invoke;
+const EXPECTED_FAILURES = new Set([
+  "make_move", "legal_targets", "scratch_legal_targets", "scratch_try_move", "validate_fen", "parse_pgn",
+]);
+
+async function invoke(command, args) {
+  try {
+    return await rawInvoke(command, args);
+  } catch (err) {
+    const quiet = EXPECTED_FAILURES.has(command) || /game changed|cancelled/.test(String(err));
+    log[quiet ? "debug" : "warn"](`${command} failed: ${err}`);
+    throw err;
+  }
+}
 const listen = window.__TAURI__.event.listen;
 
 const FILES = ["a", "b", "c", "d", "e", "f", "g", "h"];

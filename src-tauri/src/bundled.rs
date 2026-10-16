@@ -21,6 +21,7 @@ fn apk_path() -> Option<PathBuf> {
 #[cfg(target_os = "android")]
 fn model_ids(_app: &AppHandle) -> Vec<String> {
     let Some(file) = apk_path().and_then(|p| std::fs::File::open(p).ok()) else {
+        log::warn!("[models] couldn't open the APK to list the bundled models");
         return Vec::new();
     };
     let Ok(mut zip) = zip::ZipArchive::new(file) else {
@@ -53,6 +54,7 @@ fn model_path(app: &AppHandle, model: &str) -> Result<PathBuf, String> {
         return Ok(path);
     }
 
+    log::info!("[models] copying {model} out of the APK");
     let tmp = path.with_extension("onnx.part");
     let mut out = std::fs::File::create(&tmp).map_err(|e| format!("could not write {}: {e}", tmp.display()))?;
     std::io::copy(&mut entry, &mut out).map_err(|e| e.to_string())?;
@@ -85,18 +87,28 @@ fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
 
 #[cfg(not(target_os = "android"))]
 fn model_ids(app: &AppHandle) -> Vec<String> {
-    let Ok(dir) = resource_dir(app, "models") else {
-        return Vec::new();
+    let dir = match resource_dir(app, "models") {
+        Ok(dir) => dir,
+        Err(e) => {
+            log::warn!("[models] {e}");
+            return Vec::new();
+        }
     };
-    let mut ids: Vec<String> = std::fs::read_dir(dir)
-        .into_iter()
-        .flatten()
+    let entries = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries,
+        Err(e) => {
+            log::warn!("[models] can't read {}: {e}", dir.display());
+            return Vec::new();
+        }
+    };
+    let mut ids: Vec<String> = entries
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().and_then(|s| s.to_str()) == Some("onnx"))
         .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
         .collect();
     ids.sort();
+    log::debug!("[models] found {ids:?}");
     ids
 }
 
@@ -104,8 +116,10 @@ fn model_ids(app: &AppHandle) -> Vec<String> {
 fn model_path(app: &AppHandle, model: &str) -> Result<PathBuf, String> {
     let path = resource_dir(app, "models")?.join(format!("{model}.onnx"));
     if path.is_file() {
+        log::debug!("[models] using {}", path.display());
         Ok(path)
     } else {
+        log::error!("[models] missing {}", path.display());
         Err(format!("{model} isn't bundled in this build"))
     }
 }
@@ -114,6 +128,7 @@ fn model_path(app: &AppHandle, model: &str) -> Result<PathBuf, String> {
 #[cfg(not(target_os = "android"))]
 pub fn stockfish_binary(app: &AppHandle) -> Result<PathBuf, String> {
     if let Some(path) = std::env::var_os("STOCKFISH_PATH") {
+        log::info!("[stockfish] STOCKFISH_PATH override: {}", PathBuf::from(&path).display());
         return Ok(PathBuf::from(path));
     }
     let name = if cfg!(windows) { "stockfish.exe" } else { "stockfish" };
@@ -121,6 +136,7 @@ pub fn stockfish_binary(app: &AppHandle) -> Result<PathBuf, String> {
     if path.is_file() {
         Ok(path)
     } else {
+        log::error!("[stockfish] missing {}", path.display());
         Err(format!("{name} isn't bundled in this build (run scripts/fetch_assets.py --stockfish)"))
     }
 }
@@ -160,7 +176,11 @@ pub fn list_models(app: AppHandle) -> Vec<String> {
 #[cfg(not(target_os = "android"))]
 pub fn configure_ort(app: &AppHandle) -> Result<(), String> {
     if std::env::var_os("ORT_DYLIB_PATH").is_none() {
-        let lib = ort_library(app).ok_or("the bundled ONNX Runtime library is missing from this build")?;
+        let lib = ort_library(app).ok_or_else(|| {
+            log::error!("[ort] no ONNX Runtime library found in the bundled resources");
+            "the bundled ONNX Runtime library is missing from this build"
+        })?;
+        log::info!("[ort] using {}", lib.display());
         // only reached before any session exists, so nothing else is reading the environment
         unsafe { std::env::set_var("ORT_DYLIB_PATH", lib) };
     }

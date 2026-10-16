@@ -79,14 +79,16 @@ fn shared_session(app: &AppHandle, model: &str, history: usize) -> Result<Arc<ma
     if let Some((name, hist, weak)) = cache.as_ref() {
         if name == model && *hist == history {
             if let Some(session) = weak.upgrade() {
-                eprintln!("[engine] reusing the loaded {model} session");
+                log::debug!("[engine] reusing the loaded {model} session");
                 return Ok(session);
             }
         }
     }
     let source = bundled::maia_model_source(app, model)?;
     bundled::configure_ort(app)?;
+    let started = Instant::now();
     let session = Arc::new(maia_core::Session::load(&source, history)?);
+    log::info!("[engine] loaded {model} in {} ms", started.elapsed().as_millis());
     drop(source);
     *cache = Some((model.to_string(), history, Arc::downgrade(&session)));
     Ok(session)
@@ -113,6 +115,7 @@ fn with_stockfish<T>(
 ) -> Result<T, String> {
     let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     if slot.is_none() && state.stockfish_wanted.load(Ordering::SeqCst) {
+        log::info!("[stockfish] restarting after an idle shutdown");
         *slot = Some(spawn_stockfish(app)?);
     }
     let sf = slot.as_mut().ok_or("stockfish is not running")?;
@@ -125,8 +128,10 @@ fn spawn_maia(app: &AppHandle, model: &str, extra_args: Vec<String>) -> Result<E
     let mut args: Vec<String> = vec!["--history".into(), "8".into(), "--use-uci-history".into(), "--multipv".into(), "0".into()];
     args.extend(extra_args);
     let history = maia_core::Config::from_args(&args).history;
-    let session = shared_session(app, model, history)?;
+    let session = shared_session(app, model, history)
+        .inspect_err(|e| log::error!("[engine] couldn't load {model}: {e}"))?;
     Engine::spawn_maia(maia_core::ModelSource::Shared(session), &args)
+        .inspect_err(|e| log::error!("[engine] Maia failed to start: {e}"))
 }
 
 // the idle reaper may have shut it down
@@ -153,6 +158,7 @@ fn revive_engine(app: &AppHandle, state: &AppState, slot: &mut Option<Engine>) -
     }
     let spec = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner).clone();
     if let Some(spec) = spec {
+        log::info!("[engine] reviving {} at {} Elo", spec.model, spec.elo);
         let mut eng = spawn_maia(app, &spec.model, spec.args)?;
         eng.set_elo(spec.elo)?;
         *slot = Some(eng);
@@ -230,6 +236,7 @@ fn start_engine(
     *slot = None;
 
     let extra_args = extra_args.unwrap_or_default();
+    log::info!("[engine] start_engine model={command} elo={elo} args={extra_args:?}");
     let mut eng = spawn_maia(&app, &command, extra_args.clone())?;
     eng.set_elo(elo)?;
     *slot = Some(eng);
@@ -282,6 +289,7 @@ fn score_human_moves(
 
 #[tauri::command]
 fn stop_engine(state: State<AppState>) -> Result<(), String> {
+    log::info!("[engine] stop_engine");
     *state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner) = None;
     {
         let _game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
@@ -316,6 +324,7 @@ fn app_version() -> &'static str {
 // try_lock leaves a search in flight alone
 #[tauri::command]
 fn suspend_engines(state: State<AppState>) -> Result<(), String> {
+    log::info!("[engine] suspending engines");
     let has_spec = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner).is_some();
     if has_spec {
         if let Ok(mut slot) = state.engine.try_lock() {
@@ -358,6 +367,7 @@ fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, Stri
     let gs = {
         let mut game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
         if state.generation.load(Ordering::SeqCst) != generation {
+            log::debug!("[engine] dropping {uci_move}, the game moved on");
             return Err(STALE_MOVE.into());
         }
         game.try_move_uci(&uci_move)?;
@@ -462,17 +472,31 @@ fn analyze_moves(
         config.multipv = mpv.clamp(1, MAX_MULTIPV);
     }
 
+    log::info!(
+        "[analysis] {} plies, depth {}, multipv {}",
+        sans.len(),
+        config.depth,
+        config.multipv
+    );
+    let started = Instant::now();
     state.analysis_cancel.store(false, Ordering::SeqCst);
-    with_stockfish(&app, state.inner(), |eng| {
+    let result = with_stockfish(&app, state.inner(), |eng| {
         eng.set_cancel(Some(state.analysis_cancel.clone()));
         let result = analysis::analyze_game(eng, &parsed, start_board, &config);
         eng.set_cancel(None);
         result
-    })
+    });
+    match &result {
+        Ok(_) => log::info!("[analysis] done in {} ms", started.elapsed().as_millis()),
+        Err(e) if e.as_str() == engine::CANCELLED => log::info!("[analysis] cancelled"),
+        Err(e) => log::error!("[analysis] failed: {e}"),
+    }
+    result
 }
 
 #[tauri::command]
 fn cancel_analysis(state: State<AppState>) {
+    log::info!("[analysis] cancel requested");
     state.analysis_cancel.store(true, Ordering::SeqCst);
 }
 
@@ -516,7 +540,19 @@ fn scratch_try_move(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let mut logger = tauri_plugin_log::Builder::new()
+        .level(log::LevelFilter::Info)
+        .max_file_size(1_000_000)
+        .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(3));
+    if cfg!(debug_assertions) {
+        // tao and wry are very chatty at debug
+        logger = logger
+            .level(log::LevelFilter::Debug)
+            .level_for("tao", log::LevelFilter::Warn)
+            .level_for("wry", log::LevelFilter::Warn);
+    }
     tauri::Builder::default()
+        .plugin(logger.build())
         .manage(AppState {
             game: Mutex::new(Game::new()),
             generation: AtomicU64::new(0),
@@ -532,6 +568,13 @@ pub fn run() {
             engine_last_used: Mutex::new(Instant::now()),
         })
         .setup(|app| {
+            std::panic::set_hook(Box::new(|info| log::error!("panic: {info}")));
+            log::info!(
+                "[app] Maia Chess {} on {}/{}",
+                env!("MAIA_VERSION"),
+                std::env::consts::OS,
+                std::env::consts::ARCH
+            );
             let handle = app.handle().clone();
             std::thread::spawn(move || loop {
                 std::thread::sleep(Duration::from_secs(15));
@@ -545,7 +588,7 @@ pub fn run() {
                 if idle {
                     if let Ok(mut slot) = state.insights.try_lock() {
                         if slot.is_some() {
-                            eprintln!("[insights] idle, shutting down");
+                            log::info!("[insights] idle, shutting down");
                             *slot = None;
                         }
                     }
@@ -559,7 +602,7 @@ pub fn run() {
                 if engine_idle {
                     if let Ok(mut slot) = state.engine.try_lock() {
                         if slot.is_some() {
-                            eprintln!("[engine] idle, shutting down");
+                            log::info!("[engine] idle, shutting down");
                             *slot = None;
                         }
                     }
@@ -573,7 +616,7 @@ pub fn run() {
                 if stockfish_idle {
                     if let Ok(mut slot) = state.stockfish.try_lock() {
                         if slot.is_some() {
-                            eprintln!("[stockfish] idle, shutting down");
+                            log::info!("[stockfish] idle, shutting down");
                             *slot = None;
                         }
                     }

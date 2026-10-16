@@ -14,8 +14,9 @@ pub struct ProcessStockfish {
 }
 
 pub fn start(path: &Path) -> Result<(ProcessStockfish, Receiver<String>), String> {
+    log::info!("[stockfish] starting {}", path.display());
     let mut command = Command::new(path);
-    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
@@ -28,6 +29,14 @@ pub fn start(path: &Path) -> Result<(ProcessStockfish, Receiver<String>), String
         .map_err(|e| format!("could not start {}: {e}", path.display()))?;
     let stdin = child.stdin.take().ok_or("Stockfish has no stdin")?;
     let stdout = child.stdout.take().ok_or("Stockfish has no stdout")?;
+    if let Some(stderr) = child.stderr.take() {
+        // a crashing binary usually says why on stderr
+        let _ = thread::Builder::new().name("stockfish-err".into()).spawn(move || {
+            for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+                log::warn!("[stockfish] {line}");
+            }
+        });
+    }
 
     let (tx, rx) = mpsc::channel();
     let reader = thread::Builder::new()
@@ -38,6 +47,7 @@ pub fn start(path: &Path) -> Result<(ProcessStockfish, Receiver<String>), String
                     break;
                 }
             }
+            log::debug!("[stockfish] output closed");
         })
         .map_err(|e| format!("could not start the Stockfish reader: {e}"))?;
 
@@ -57,6 +67,11 @@ impl Drop for ProcessStockfish {
         let deadline = Instant::now() + QUIT_GRACE;
         while Instant::now() < deadline && matches!(self.child.try_wait(), Ok(None)) {
             thread::sleep(Duration::from_millis(20));
+        }
+        match self.child.try_wait() {
+            Ok(Some(status)) if !status.success() => log::warn!("[stockfish] exited with {status}"),
+            Ok(None) => log::warn!("[stockfish] still running {}s after quit, killing it", QUIT_GRACE.as_secs()),
+            _ => {}
         }
         let _ = self.child.kill();
         let _ = self.child.wait();
