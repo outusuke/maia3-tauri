@@ -77,4 +77,4 @@ cargo tauri android build --apk --target aarch64   # or: cargo tauri android dev
 
 ## credits
 
-Move classification adapted from [WintrChess](https://github.com/WintrCat/wintrchess); human insights from [maia-platform-frontend](https://github.com/CSSLab/maia-platform-frontend) (both GPL-3.0). Models by [CSSLab](https://github.com/CSSLab/maia3).
+Move classification adapted from [WintrChess](https://github.com/WintrCat/wintrchess) and [En Croissant](https://github.com/franciscoBSalgueiro/en-croissant), whose move icons come from [lichess](https://github.com/lichess-org/lila); human insights from [maia-platform-frontend](https://github.com/CSSLab/maia-platform-frontend) (all GPL-3.0 except lichess, AGPL-3.0). Models by [CSSLab](https://github.com/CSSLab/maia3).

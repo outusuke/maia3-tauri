@@ -15,7 +15,7 @@ function analysisArrowsAt(ply) {
   const m = analysis[ply];
   if (!m) return arrows;
   const played = uciToSquares(m.uci);
-  if (played && !isPositiveGrade(m.grade)) arrows.push({ from: played[0], to: played[1], brush: "red", opacity: 0.7 });
+  if (played && isFlaggedGrade(m.grade)) arrows.push({ from: played[0], to: played[1], brush: "red", opacity: 0.7 });
   const best = uciToSquares(m.bestMoveUci);
   if (best) arrows.push({ from: best[0], to: best[1], brush: "blue" });
   return arrows;
@@ -637,8 +637,8 @@ az.analyzeBtn.addEventListener("click", async () => {
 });
 
 function gradeClass(grade) { return "grade-" + grade; }
-// no "better move" hint for either — both are already the top choice
-function isPositiveGrade(grade) { return ["good", "best", "onlymove", "brilliant"].includes(grade); }
+// grades that get a red arrow and a "better move" hint
+function isFlaggedGrade(grade) { return ["dubious", "mistake", "blunder"].includes(grade); }
 
 function renderAnalyzeMoveList() {
   const list = az.moveList;
@@ -666,7 +666,7 @@ function renderAnalyzeMoveList() {
         cell.textContent = i === 0 ? "…" : "";
       } else {
         const graded = analysis && analysis[m.ply - 1];
-        if (graded && (side === "both" || side === sideToMove(graded.fenBefore))) {
+        if (graded && graded.grade && (side === "both" || side === sideToMove(graded.fenBefore))) {
           const chip = document.createElement("span");
           chip.className = `gradeChip ${gradeClass(graded.grade)}`;
           chip.title = EVAL_GRADE_NAME[graded.grade] ?? graded.grade;

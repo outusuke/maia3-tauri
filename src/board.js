@@ -19,13 +19,12 @@ const RANKS = ["1", "2", "3", "4", "5", "6", "7", "8"];
 const STANDARD_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 const PIECE_VALUES = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
 const GRADE_BADGE_ICON = {
-  brilliant: "img/classifications/brilliant.png",
-  onlymove: "img/classifications/critical.png",
-  best: "img/classifications/best.png",
-  good: "img/classifications/okay.png",
-  inaccuracy: "img/classifications/inaccuracy.png",
-  mistake: "img/classifications/mistake.png",
-  blunder: "img/classifications/blunder.png",
+  brilliant: "img/classifications/brilliant.svg",
+  good: "img/classifications/good.svg",
+  interesting: "img/classifications/interesting.svg",
+  dubious: "img/classifications/dubious.svg",
+  mistake: "img/classifications/mistake.svg",
+  blunder: "img/classifications/blunder.svg",
 };
 
 function pieceImageSrc(piece) {

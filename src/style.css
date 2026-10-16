@@ -479,21 +479,19 @@ button.small.wide { width: 100%; }
 #editorError { color: #ff8a8a; font-size: 12.5px; min-height: 1.2em; }
 
 /* Analyze / Practice tab */
-.grade-good { color: #8fe89b; }
-.grade-best { color: #6fdc8c; }
-.grade-onlymove { color: #7db7e8; }
-.grade-brilliant { color: #26c2c2; }
-.grade-inaccuracy { color: #e3c96b; }
-.grade-mistake { color: #f0a860; }
-.grade-blunder { color: #ff8a8a; }
+.grade-brilliant { color: #15aabf; }
+.grade-good { color: #12b886; }
+.grade-interesting { color: #82c91e; }
+.grade-dubious { color: #fab005; }
+.grade-mistake { color: #fd7e14; }
+.grade-blunder { color: #fa5252; }
 .gradeChip { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
-.gradeChip.grade-good { background: #4caf6b; }
-.gradeChip.grade-best { background: #3fbf6a; }
-.gradeChip.grade-onlymove { background: #5b9bd5; }
-.gradeChip.grade-brilliant { background: #26c2c2; }
-.gradeChip.grade-inaccuracy { background: #e3c96b; }
-.gradeChip.grade-mistake { background: #f0a860; }
-.gradeChip.grade-blunder { background: #e05555; }
+.gradeChip.grade-brilliant { background: #15aabf; }
+.gradeChip.grade-good { background: #12b886; }
+.gradeChip.grade-interesting { background: #82c91e; }
+.gradeChip.grade-dubious { background: #fab005; }
+.gradeChip.grade-mistake { background: #fd7e14; }
+.gradeChip.grade-blunder { background: #fa5252; }
 
 #flaggedList { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
 .flaggedItem {
