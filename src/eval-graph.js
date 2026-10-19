@@ -93,7 +93,8 @@ function drawEvalGraph() {
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
 
   const n = analysis.length;
-  const curPly = evalCursorPly();
+  if (evalHoverPly !== null && !(evalHoverPly >= 0 && evalHoverPly <= analysis.length)) evalHoverPly = null;
+  const curPly = Math.max(0, Math.min(n, evalCursorPly() || 0));
   const left = 30, right = 10, top = 10, bottom = 20;
   const plotW = W - left - right;
   const plotH = H - top - bottom;
@@ -200,6 +201,7 @@ function renderEvalInfo(ply) {
     return;
   }
   const m = analysis[ply - 1];
+  if (!m) return;
   const num = Math.floor((ply - 1) / 2) + 1;
   const label = (ply - 1) % 2 === 0 ? `${num}.` : `${num}...`;
   add(`${label} ${m.san}${EVAL_GRADE_MARK[m.grade]}`, "evalMove");
