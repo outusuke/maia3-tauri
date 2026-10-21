@@ -282,11 +282,10 @@
 :root[data-theme="skeuo"] .flaggedItem .lineMove { color: var(--ink); }
 :root[data-theme="skeuo"] .flaggedItem .lineMove:hover { background: rgba(34,48,79,.14); }
 :root[data-theme="skeuo"] .flaggedItem .lineMove.active { background: #3b6ef2; color: #fff; }
-:root[data-theme="skeuo"] .flaggedItem .grade-best,
-:root[data-theme="skeuo"] .flaggedItem .grade-good { color: #1d6b32; }
-:root[data-theme="skeuo"] .flaggedItem .grade-onlymove { color: #1f5f9a; }
+:root[data-theme="skeuo"] .flaggedItem .grade-good { color: #087f5b; }
+:root[data-theme="skeuo"] .flaggedItem .grade-interesting { color: #5c940d; }
 :root[data-theme="skeuo"] .flaggedItem .grade-brilliant { color: #0b6f6f; }
-:root[data-theme="skeuo"] .flaggedItem .grade-inaccuracy { color: #7a5c00; }
+:root[data-theme="skeuo"] .flaggedItem .grade-dubious { color: #7a5c00; }
 :root[data-theme="skeuo"] .flaggedItem .grade-mistake { color: #9a4a00; }
 :root[data-theme="skeuo"] .flaggedItem .grade-blunder { color: #a3211b; }
 

@@ -1,8 +1,8 @@
 // Eval graph: Y axis is win probability (Lichess curve); linear centipawns would flatten most games near zero.
-const EVAL_GRADE_COLORS = { brilliant: "#26c2c2", onlymove: "#5b9bd5", inaccuracy: "#e3c96b", mistake: "#f0a860", blunder: "#e05555" };
-const EVAL_GRADE_RADIUS = { brilliant: 5, onlymove: 4.5, inaccuracy: 3.5, mistake: 4.5, blunder: 5.5 };
-const EVAL_GRADE_MARK = { good: "", best: "", onlymove: "!", brilliant: "!!", inaccuracy: "?!", mistake: "?", blunder: "??" };
-const EVAL_GRADE_NAME = { good: "Good", best: "Best", onlymove: "Only move", brilliant: "Brilliant", inaccuracy: "Inaccuracy", mistake: "Mistake", blunder: "Blunder" };
+const EVAL_GRADE_COLORS = { brilliant: "#15aabf", good: "#12b886", interesting: "#82c91e", dubious: "#fab005", mistake: "#fd7e14", blunder: "#fa5252" };
+const EVAL_GRADE_RADIUS = { brilliant: 5, good: 4, interesting: 4, dubious: 3.5, mistake: 4.5, blunder: 5.5 };
+const EVAL_GRADE_MARK = { brilliant: "!!", good: "!", interesting: "!?", dubious: "?!", mistake: "?", blunder: "??" };
+const EVAL_GRADE_NAME = { brilliant: "Brilliant", good: "Good", interesting: "Interesting", dubious: "Dubious", mistake: "Mistake", blunder: "Blunder" };
 let evalHoverPly = null;
 let evalDragging = false;
 let evalGeom = null;       // { left, plotW, n } from the last draw, for hit-testing
@@ -204,14 +204,14 @@ function renderEvalInfo(ply) {
   if (!m) return;
   const num = Math.floor((ply - 1) / 2) + 1;
   const label = (ply - 1) % 2 === 0 ? `${num}.` : `${num}...`;
-  add(`${label} ${m.san}${EVAL_GRADE_MARK[m.grade]}`, "evalMove");
-  add(` ${EVAL_GRADE_NAME[m.grade]}`, gradeClass(m.grade));
+  add(`${label} ${m.san}${EVAL_GRADE_MARK[m.grade] ?? ""}`, "evalMove");
+  if (m.grade) add(` ${EVAL_GRADE_NAME[m.grade]}`, gradeClass(m.grade));
 
   const before = evalLabel(m.evalBeforeCp, m.mateBefore);
   const after = evalLabel(m.evalAfterCp, m.mateAfter);
   add(` · eval ${before === after ? after : `${before} → ${after}`}`, "evalMuted");
 
-  if (!puzzleMode && !isPositiveGrade(m.grade) && m.bestMoveSan) {
+  if (!puzzleMode && isFlaggedGrade(m.grade) && m.bestMoveSan) {
     add(" · better: ", "evalMuted");
     const b = document.createElement(hasClickableLine(m) ? "span" : "b");
     b.textContent = m.bestMoveSan;
@@ -224,7 +224,7 @@ function renderEvalInfo(ply) {
   }
 
   az.evalLine.textContent = "";
-  if (!puzzleMode && !isPositiveGrade(m.grade) && hasClickableLine(m)) {
+  if (!puzzleMode && isFlaggedGrade(m.grade) && hasClickableLine(m)) {
     renderLineChips(az.evalLine, m, (n) => startVariation(ply - 1, n));
     az.evalLine.dataset.ply = String(ply - 1);
   }
@@ -232,9 +232,9 @@ function renderEvalInfo(ply) {
 
 function renderEvalLegend() {
   az.evalLegend.textContent = "";
-  const GRADE_NOUN_PLURAL = { brilliant: "brilliant moves", onlymove: "only moves", inaccuracy: "inaccuracies", mistake: "mistakes", blunder: "blunders" };
-  const GRADE_NOUN_SINGULAR = { brilliant: "brilliant move", onlymove: "only move", inaccuracy: "inaccuracy", mistake: "mistake", blunder: "blunder" };
-  for (const g of ["brilliant", "onlymove", "inaccuracy", "mistake", "blunder"]) {
+  const GRADE_NOUN_PLURAL = { brilliant: "brilliant moves", good: "good moves", interesting: "interesting moves", dubious: "dubious moves", mistake: "mistakes", blunder: "blunders" };
+  const GRADE_NOUN_SINGULAR = { brilliant: "brilliant move", good: "good move", interesting: "interesting move", dubious: "dubious move", mistake: "mistake", blunder: "blunder" };
+  for (const g of ["brilliant", "good", "interesting", "dubious", "mistake", "blunder"]) {
     const matches = gradeMatches(g);
     const item = document.createElement("button");
     item.type = "button";

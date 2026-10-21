@@ -1,4 +1,4 @@
-use crate::analysis::{effective_cp, winning_chances, AnalysisConfig};
+use crate::analysis::{effective_cp, win_chance_pct, AnalysisConfig};
 use crate::engine::{Engine, MaiaInsights};
 use crate::game::move_to_san;
 use chess::{Board, ChessMove};
@@ -41,11 +41,12 @@ pub struct MoveScores {
     pub scores: Vec<MoveScore>,
 }
 
-// Same cutoffs the game grader uses, in win-rate units (winning chances run -1..1, so halve them).
+// Same cutoffs the game grader uses; `win_loss` is a 0-1 fraction, the cutoffs are percentage points.
 fn classify(win_loss: f64, cfg: &AnalysisConfig) -> &'static str {
-    if win_loss < cfg.inaccuracy_wc / 2.0 {
+    let loss_pct = win_loss * 100.0;
+    if loss_pct <= cfg.dubious_pct {
         "good"
-    } else if win_loss < cfg.mistake_wc / 2.0 {
+    } else if loss_pct <= cfg.mistake_pct {
         "ok"
     } else {
         "blunder"
@@ -146,7 +147,7 @@ pub fn score_moves(
         .filter_map(|line| {
             let uci = line.pv.first()?.clone();
             let eff = effective_cp(line.score_cp, line.mate);
-            let win_loss = ((winning_chances(best_eff) - winning_chances(eff)) / 2.0).max(0.0);
+            let win_loss = ((win_chance_pct(best_eff) - win_chance_pct(eff)) / 100.0).max(0.0);
             Some(MoveScore { class: classify(win_loss, &cfg), uci, win_loss })
         })
         .collect();

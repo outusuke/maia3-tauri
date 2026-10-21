@@ -2,7 +2,8 @@ use crate::brilliant::{is_brilliant, BrilliantInput, Eval};
 use crate::engine::Engine;
 use crate::game::move_to_san;
 use crate::pgn::ParsedGame;
-use chess::{Board, ChessMove, Color, MoveGen};
+use crate::sacrifice::is_sacrifice;
+use chess::{Board, ChessMove, Color};
 use serde::Serialize;
 use std::str::FromStr;
 use std::time::Duration;
@@ -11,10 +12,9 @@ use std::time::Duration;
 #[serde(rename_all = "lowercase")]
 pub enum MoveGrade {
     Brilliant,
-    OnlyMove,
-    Best,
     Good,
-    Inaccuracy,
+    Interesting,
+    Dubious,
     Mistake,
     Blunder,
 }
@@ -27,7 +27,7 @@ pub struct MoveAnalysis {
     pub uci: String,
     pub fen_before: String,
     pub fen_after: String,
-    pub grade: MoveGrade,
+    pub grade: Option<MoveGrade>,
     /// White's perspective so signs compare across plies; None for mate scores (see the mate fields).
     pub eval_before_cp: Option<i32>,
     pub eval_after_cp: Option<i32>,
@@ -48,16 +48,18 @@ pub struct MoveAnalysis {
 pub struct AnalysisConfig {
     pub depth: u32,
     pub multipv: u32,
-    // Winning-chances units (-1..1), same scale and constants Lichess grades moves on.
-    pub inaccuracy_wc: f64,
-    pub mistake_wc: f64,
-    pub blunder_wc: f64,
+    // Win-chance percentage points (0-100), the cutoffs En Croissant annotates with.
+    pub dubious_pct: f64,
+    pub mistake_pct: f64,
+    pub blunder_pct: f64,
     pub acceptable_cp: i32,
     pub move_timeout: Duration,
-    // Max winning-chances loss for a non-top move to still count as Best.
-    pub best_loss_wc: f64,
-    // Min winning-chances gap to the second-best line for a top move to count as an only move.
-    pub only_move_gap_wc: f64,
+    // Min win-chance gap to the second-best line for the top move to earn Good or Brilliant.
+    pub top_move_gap_pct: f64,
+    // Min win-chance gain over the position before the opponent's last move for the top move to earn Good.
+    pub rebound_pct: f64,
+    // A sacrifice that leaves the mover worse than this isn't worth flagging as Interesting.
+    pub sacrifice_floor_cp: i32,
 }
 
 impl Default for AnalysisConfig {
@@ -65,13 +67,14 @@ impl Default for AnalysisConfig {
         AnalysisConfig {
             depth: 14,
             multipv: 3,
-            inaccuracy_wc: 0.1,
-            mistake_wc: 0.2,
-            blunder_wc: 0.3,
+            dubious_pct: 5.0,
+            mistake_pct: 10.0,
+            blunder_pct: 20.0,
             acceptable_cp: 20,
             move_timeout: Duration::from_secs(60),
-            best_loss_wc: 0.01,
-            only_move_gap_wc: 0.2,
+            top_move_gap_pct: 10.0,
+            rebound_pct: 5.0,
+            sacrifice_floor_cp: -200,
         }
     }
 }
@@ -87,9 +90,11 @@ pub(crate) fn effective_cp(cp: Option<i32>, mate: Option<i32>) -> i32 {
     }
 }
 
-// lichess's cp->winning-chances curve; saturates near the edges so a shuffle in a won endgame isn't a "blunder"
-pub(crate) fn winning_chances(effective_cp: i32) -> f64 {
-    2.0 / (1.0 + (-0.004 * effective_cp as f64).exp()) - 1.0
+const CP_CEILING: i32 = 1000;
+
+pub(crate) fn win_chance_pct(effective_cp: i32) -> f64 {
+    let cp = effective_cp.clamp(-CP_CEILING, CP_CEILING) as f64;
+    50.0 + 50.0 * (2.0 / (1.0 + (-0.00368208 * cp).exp()) - 1.0)
 }
 
 fn to_eval(cp: Option<i32>, mate: Option<i32>, sign: i32) -> Eval {
@@ -97,6 +102,48 @@ fn to_eval(cp: Option<i32>, mate: Option<i32>, sign: i32) -> Eval {
         Some(m) => Eval { mate: true, value: m * sign },
         None => Eval { mate: false, value: cp.unwrap_or(0) * sign },
     }
+}
+
+struct GradeInput {
+    best: i32,
+    second: Option<i32>,
+    played: i32,
+    // Mover's eval before the opponent's last move
+    before_opponent_move: Option<i32>,
+    played_is_best: bool,
+    sacrifice: bool,
+    // Sacrifice and the WintrChess check together; either alone over-awards compared to chess.com
+    brilliant: bool,
+}
+
+fn grade_move(config: &AnalysisConfig, input: &GradeInput) -> Option<MoveGrade> {
+    let best_pct = win_chance_pct(input.best);
+    let loss_pct = best_pct - win_chance_pct(input.played);
+    if loss_pct > config.blunder_pct {
+        return Some(MoveGrade::Blunder);
+    }
+    if loss_pct > config.mistake_pct {
+        return Some(MoveGrade::Mistake);
+    }
+    if loss_pct > config.dubious_pct {
+        return Some(MoveGrade::Dubious);
+    }
+
+    if input.brilliant {
+        return Some(MoveGrade::Brilliant);
+    }
+
+    let second = input.second?;
+    if input.played_is_best && best_pct - win_chance_pct(second) > config.top_move_gap_pct {
+        let before = win_chance_pct(input.before_opponent_move.unwrap_or(0));
+        if best_pct - before > config.rebound_pct {
+            return Some(MoveGrade::Good);
+        }
+    }
+    if input.sacrifice && input.played > config.sacrifice_floor_cp {
+        return Some(MoveGrade::Interesting);
+    }
+    None
 }
 
 fn flip_if_black(value: i32, side_to_move: Color) -> i32 {
@@ -116,6 +163,7 @@ pub fn analyze_game(
 ) -> Result<Vec<MoveAnalysis>, String> {
     let mut board = start_board;
     let mut out = Vec::with_capacity(parsed.ucis.len());
+    let mut previous_best: Option<i32> = None;
 
     for (ply, (uci, san)) in parsed.ucis.iter().zip(parsed.sans.iter()).enumerate() {
         let fen_before = format!("{board}");
@@ -147,47 +195,31 @@ pub fn analyze_game(
             )
         };
 
-        let loss = (winning_chances(best_effective) - winning_chances(played_effective)).max(0.0);
-        let mut grade = if loss < config.inaccuracy_wc {
-            MoveGrade::Good
-        } else if loss < config.mistake_wc {
-            MoveGrade::Inaccuracy
-        } else if loss < config.blunder_wc {
-            MoveGrade::Mistake
-        } else {
-            MoveGrade::Blunder
-        };
-
         let second = lines.iter().find(|l| l.multipv == 2);
         let second_effective = second.map(|l| effective_cp(l.score_cp, l.mate));
-        let gap_wc = second_effective.map_or(0.0, |e| winning_chances(best_effective) - winning_chances(e));
-        // Same cutoff WintrChess uses for "already winning anyway".
-        let second_still_winning = second_effective.map_or(false, |e| e >= 700);
-        let already_mating = best.mate.map_or(false, |m| m > 0);
-
-        if played_is_best
-            && gap_wc >= config.only_move_gap_wc
-            && !second_still_winning
-            && !already_mating
-            && played_effective >= 0
-            && MoveGen::new_legal(&board).len() > 1
-        {
-            grade = MoveGrade::OnlyMove;
-        } else if played_is_best || loss < config.best_loss_wc {
-            grade = MoveGrade::Best;
-        }
-
-        let second_eval = second.map(|l| to_eval(l.score_cp, l.mate, 1));
-        if is_brilliant(&BrilliantInput {
-            fen_before: &fen_before,
-            uci,
-            top_move_played: played_is_best,
-            prev_top: to_eval(best.score_cp, best.mate, 1),
-            prev_second: second_eval,
-            current: played_eval,
-        }) {
-            grade = MoveGrade::Brilliant;
-        }
+        let sacrifice = is_sacrifice(&board, &board_after);
+        let brilliant = sacrifice
+            && is_brilliant(&BrilliantInput {
+                fen_before: &fen_before,
+                uci,
+                top_move_played: played_is_best,
+                prev_top: to_eval(best.score_cp, best.mate, 1),
+                prev_second: second.map(|l| to_eval(l.score_cp, l.mate, 1)),
+                current: played_eval,
+            });
+        let grade = grade_move(
+            config,
+            &GradeInput {
+                best: best_effective,
+                second: second_effective,
+                played: played_effective,
+                before_opponent_move: previous_best.map(|e| -e),
+                played_is_best,
+                sacrifice,
+                brilliant,
+            },
+        );
+        previous_best = Some(best_effective);
 
         let eval_before_cp = best.score_cp.map(|cp| flip_if_black(cp, side_to_move));
         let mate_before = best.mate.map(|m| flip_if_black(m, side_to_move));
