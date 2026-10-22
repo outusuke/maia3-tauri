@@ -214,8 +214,9 @@ impl Engine {
     ) -> Result<Vec<PvLine>, String> {
         self.set_multipv(multipv.max(1))?;
         self.send(&format!("position fen {}", uci_fen(fen)))?;
-        self.send(&format!("go depth {depth}"))?;
-        self.read_search(timeout)
+        // movetime makes Stockfish return its best-so-far instead of tripping the hard timeout below
+        self.send(&format!("go depth {depth} movetime {}", timeout.as_millis()))?;
+        self.read_search(timeout + Duration::from_secs(5))
     }
 
     // searchmoves, so a likely human blunder still gets a real eval instead of falling off the top-N
