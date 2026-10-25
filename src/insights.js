@@ -55,24 +55,38 @@ function hiOnce(key, load) {
   return hiPromises.get(key);
 }
 
-async function hiContext(ply) {
+function hiGameSlot(ply) {
+  return { id: String(ply), ply, line: null };
+}
+
+function hiSlot() {
+  if (!variation) return hiGameSlot(azViewPly);
+  const line = variation.ucis.slice(0, variation.idx);
+  return { id: `v${azViewPly}:${line.join(",")}`, ply: azViewPly, line };
+}
+
+async function hiContext(slot) {
   const ucis = await hiUcis();
-  return { startFen: loadedGame.startFen, ucis: ucis.slice(0, ply), played: ucis[ply] || null };
+  if (slot.line) {
+    // Maia reads recent history, so the line is appended to the game moves before its branch point
+    return { startFen: loadedGame.startFen, ucis: ucis.slice(0, slot.ply).concat(slot.line), played: null };
+  }
+  return { startFen: loadedGame.startFen, ucis: ucis.slice(0, slot.ply), played: ucis[slot.ply] || null };
 }
 
-function hiFetchMoves(ply, rating) {
-  return hiOnce(`moves:${ply}:${rating}`, async () =>
-    invoke("human_moves", { ...(await hiContext(ply)), ratings: [rating], rating }));
+function hiFetchMoves(slot, rating) {
+  return hiOnce(`moves:${slot.id}:${rating}`, async () =>
+    invoke("human_moves", { ...(await hiContext(slot)), ratings: [rating], rating }));
 }
 
-function hiFetchChart(ply) {
-  return hiOnce(`chart:${ply}`, async () =>
-    invoke("human_moves", { ...(await hiContext(ply)), ratings: HI_CHART_RATINGS, rating: HI_CHART_RATINGS[0] }));
+function hiFetchChart(slot) {
+  return hiOnce(`chart:${slot.id}`, async () =>
+    invoke("human_moves", { ...(await hiContext(slot)), ratings: HI_CHART_RATINGS, rating: HI_CHART_RATINGS[0] }));
 }
 
-function hiFetchScores(ply, rating, moves) {
-  return hiOnce(`scores:${ply}:${rating}`, async () => {
-    const ctx = await hiContext(ply);
+function hiFetchScores(slot, rating, moves) {
+  return hiOnce(`scores:${slot.id}:${rating}`, async () => {
+    const ctx = await hiContext(slot);
     return invoke("score_human_moves", {
       startFen: ctx.startFen,
       ucis: ctx.ucis,
@@ -138,9 +152,9 @@ function hiArrowsFrom(moves) {
   }).filter(Boolean);
 }
 
-function hiArrowsAt(ply) {
+function hiArrowsAt() {
   if (!hi.enable.checked || !hi.arrows.checked) return [];
-  return hiArrowsFrom(hiData.get(`moves:${ply}:${hiRating()}`));
+  return hiArrowsFrom(hiData.get(`moves:${hiSlot().id}:${hiRating()}`));
 }
 
 function hiRedrawBoard() {
@@ -151,7 +165,7 @@ function hiRedrawBoard() {
 
 async function hiRefresh() {
   if (hiRedrawing) return;
-  if (!hi.enable.checked || !loadedGame || variation || puzzleMode) {
+  if (!hi.enable.checked || !loadedGame || puzzleMode) {
     hiToken++;
     hi.body.style.display = "none";
     if (!hi.enable.checked) hi.status.textContent = "";
@@ -159,9 +173,9 @@ async function hiRefresh() {
   }
 
   const token = ++hiToken;
-  const ply = azViewPly;
+  const slot = hiSlot();
   const rating = hiRating();
-  if (!hiData.has(`moves:${ply}:${rating}`)) {
+  if (!hiData.has(`moves:${slot.id}:${rating}`)) {
     hi.status.textContent = "Thinking…";
     await new Promise((r) => setTimeout(r, 250));
     if (token !== hiToken) return;
@@ -170,7 +184,7 @@ async function hiRefresh() {
 
   let moves;
   try {
-    moves = await hiFetchMoves(ply, rating);
+    moves = await hiFetchMoves(slot, rating);
   } catch (err) {
     if (token === hiToken) hi.status.textContent = "Insights failed: " + err;
     return;
@@ -178,25 +192,25 @@ async function hiRefresh() {
   if (token !== hiToken || puzzleMode) return;
 
   hi.status.textContent = "";
-  hiRender(ply, rating);
+  hiRender(slot.id, rating);
   hiRedrawBoard();
 
-  const rerender = () => { if (token === hiToken && !puzzleMode) hiRender(ply, rating); };
-  hiFetchScores(ply, rating, moves).then(rerender, (err) => {
+  const rerender = () => { if (token === hiToken && !puzzleMode) hiRender(slot.id, rating); };
+  hiFetchScores(slot, rating, moves).then(rerender, (err) => {
     if (token === hiToken) hi.status.textContent = "Scoring failed: " + err;
   });
-  if (hi.chartBox.open) hiFetchChart(ply).then(rerender, () => {});
+  if (hi.chartBox.open) hiFetchChart(slot).then(rerender, () => {});
 }
 
-function hiRender(ply, rating) {
-  const moves = hiData.get(`moves:${ply}:${rating}`);
+function hiRender(id, rating) {
+  const moves = hiData.get(`moves:${id}:${rating}`);
   if (!moves) return;
   if (!moves.moves.length) {
     hi.body.style.display = "none";
     hi.status.textContent = "No moves to show here (game over).";
     return;
   }
-  const scores = hiData.get(`scores:${ply}:${rating}`);
+  const scores = hiData.get(`scores:${id}:${rating}`);
   const byUci = new Map((scores ? scores.scores : []).map((s) => [s.uci, s]));
   const rows = moves.moves.map((m) => ({ ...m, score: byUci.get(m.uci) || null }));
 
@@ -204,7 +218,7 @@ function hiRender(ply, rating) {
   hiRenderSummary(rows, rating);
   hiRenderMeter(rows, scores !== undefined);
   hiRenderMoves(rows, scores ? scores.bestUci : null);
-  if (hi.chartBox.open) hiRenderChart(rows, hiData.get(`chart:${ply}`), rating);
+  if (hi.chartBox.open) hiRenderChart(rows, hiData.get(`chart:${id}`), rating);
 }
 
 function hiRenderSummary(rows, rating) {

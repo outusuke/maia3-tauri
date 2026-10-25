@@ -9,6 +9,7 @@ mod native_stockfish;
 mod pgn;
 #[cfg(not(target_os = "android"))]
 mod process_stockfish;
+mod sacrifice;
 
 use analysis::{AnalysisConfig, MoveAnalysis};
 use chess::{Board, Piece, Square};

@@ -2,6 +2,7 @@ use crate::brilliant::{is_brilliant, BrilliantInput, Eval};
 use crate::engine::Engine;
 use crate::game::move_to_san;
 use crate::pgn::ParsedGame;
+use crate::sacrifice::is_sacrifice;
 use chess::{Board, ChessMove, Color, MoveGen};
 use serde::Serialize;
 use std::str::FromStr;
@@ -69,7 +70,7 @@ impl Default for AnalysisConfig {
             mistake_wc: 0.2,
             blunder_wc: 0.3,
             acceptable_cp: 20,
-            move_timeout: Duration::from_secs(60),
+            move_timeout: Duration::from_secs(8),
             best_loss_wc: 0.01,
             only_move_gap_wc: 0.2,
         }
@@ -178,6 +179,7 @@ pub fn analyze_game(
         }
 
         let second_eval = second.map(|l| to_eval(l.score_cp, l.mate, 1));
+        // Either check alone over-awards brilliants compared to chess.com.
         if is_brilliant(&BrilliantInput {
             fen_before: &fen_before,
             uci,
@@ -185,7 +187,8 @@ pub fn analyze_game(
             prev_top: to_eval(best.score_cp, best.mate, 1),
             prev_second: second_eval,
             current: played_eval,
-        }) {
+        }) && is_sacrifice(&board, &board_after)
+        {
             grade = MoveGrade::Brilliant;
         }
 
