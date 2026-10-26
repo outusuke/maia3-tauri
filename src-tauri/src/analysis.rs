@@ -189,14 +189,12 @@ pub fn analyze_game(
                 && outcome_bucket(best_wc, config.outcome_wc)
                     > outcome_bucket(winning_chances(e), config.outcome_wc)
         });
-        // Same cutoff WintrChess uses for "already winning anyway".
+        // Same cutoff WintrChess uses for "already winning anyway"; a second-best mate clears it too.
         let second_still_winning = second_effective.map_or(false, |e| e >= 700);
-        let already_mating = best.mate.map_or(false, |m| m > 0);
 
         if played_is_best
             && (gap_wc >= config.only_move_gap_wc || changes_outcome)
             && !second_still_winning
-            && !already_mating
             && best_wc > -config.outcome_wc
             && !is_recapture
             && MoveGen::new_legal(&board).len() > 1
