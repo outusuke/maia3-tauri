@@ -133,7 +133,7 @@ pub fn analyze_game(
 ) -> Result<Vec<MoveAnalysis>, String> {
     let mut board = start_board;
     let mut out = Vec::with_capacity(parsed.ucis.len());
-    let mut last_capture: Option<Square> = None;
+    let mut capture_squares: Vec<Option<Square>> = Vec::new();
 
     for (ply, (uci, san)) in parsed.ucis.iter().zip(parsed.sans.iter()).enumerate() {
         let fen_before = format!("{board}");
@@ -151,7 +151,14 @@ pub fn analyze_game(
         let is_capture = board.piece_on(mv.get_dest()).is_some()
             || (board.piece_on(mv.get_source()) == Some(Piece::Pawn)
                 && mv.get_source().get_file() != mv.get_dest().get_file());
-        let is_recapture = is_capture && last_capture == Some(mv.get_dest());
+        // Opponent's captures 1 and 3 plies back, so a recapture after one in-between move still counts.
+        let is_recapture = is_capture
+            && capture_squares
+                .iter()
+                .rev()
+                .step_by(2)
+                .take(2)
+                .any(|s| *s == Some(mv.get_dest()));
         let played_is_best = best.pv.first().map(|m| m.as_str()) == Some(uci.as_str());
 
         // Scores from the mover's perspective; the after-move search reports the opponent's.
@@ -265,7 +272,7 @@ pub fn analyze_game(
             acceptable_moves,
         });
 
-        last_capture = is_capture.then(|| mv.get_dest());
+        capture_squares.push(is_capture.then(|| mv.get_dest()));
         board = board_after;
     }
 
