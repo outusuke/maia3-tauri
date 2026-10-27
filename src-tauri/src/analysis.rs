@@ -124,6 +124,31 @@ fn flip_if_black(value: i32, side_to_move: Color) -> i32 {
     }
 }
 
+fn piece_value(p: Piece) -> i32 {
+    match p {
+        Piece::Pawn => 1,
+        Piece::Knight | Piece::Bishop => 3,
+        Piece::Rook => 5,
+        Piece::Queen => 9,
+        Piece::King => 100,
+    }
+}
+
+// Free or favourable captures are too natural to call only moves.
+fn is_obvious_capture(board: &Board, mv: ChessMove, board_after: &Board) -> bool {
+    let victim = board.piece_on(mv.get_dest()).or_else(|| {
+        (board.piece_on(mv.get_source()) == Some(Piece::Pawn)
+            && mv.get_source().get_file() != mv.get_dest().get_file())
+        .then_some(Piece::Pawn)
+    });
+    let Some(victim) = victim else {
+        return false;
+    };
+    let mover = board.piece_on(mv.get_source()).unwrap_or(Piece::Pawn);
+    let can_retake = MoveGen::new_legal(board_after).any(|m| m.get_dest() == mv.get_dest());
+    !can_retake || piece_value(victim) >= piece_value(mover)
+}
+
 /// Reuses the top-line search for the played move's eval when it matches; otherwise runs a second single-line search.
 pub fn analyze_game(
     engine: &mut Engine,
@@ -159,6 +184,7 @@ pub fn analyze_game(
                 .step_by(2)
                 .take(2)
                 .any(|s| *s == Some(mv.get_dest()));
+        let obvious_capture = is_capture && is_obvious_capture(&board, mv, &board_after);
         let played_is_best = best.pv.first().map(|m| m.as_str()) == Some(uci.as_str());
 
         // Scores from the mover's perspective; the after-move search reports the opponent's.
@@ -204,6 +230,7 @@ pub fn analyze_game(
             && !second_still_winning
             && best_wc > -config.outcome_wc
             && !is_recapture
+            && !obvious_capture
             && MoveGen::new_legal(&board).len() > 1
         {
             grade = MoveGrade::OnlyMove;
