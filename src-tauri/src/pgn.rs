@@ -121,7 +121,11 @@ pub fn parse_sans(sans_in: &[String], start_fen: Option<&str>) -> Result<ParsedG
 /// chess's `from_san` only takes en passant captures written with an " e.p." suffix, which PGN doesn't use.
 // also strips "=" since this crate wants "a8Q", not "a8=Q", for promotions
 fn san_to_move(board: &Board, san: &str) -> Result<ChessMove, Error> {
-    let normalized = san.replace('=', "");
+    // from_san rejects castling written with a check/mate suffix, e.g. "O-O-O+"
+    let normalized = san
+        .replace('=', "")
+        .trim_end_matches(|c| c == '+' || c == '#')
+        .to_string();
     ChessMove::from_san(board, &normalized)
         .or_else(|first| ChessMove::from_san(board, &format!("{normalized} e.p.")).map_err(|_| first))
 }
@@ -183,7 +187,19 @@ fn is_result_token(tok: &str) -> bool {
     matches!(tok, "1-0" | "0-1" | "1/2-1/2" | "*")
 }
 
-/// Leaves +/# alone; `from_san` accepts them.
+/// Leaves +/# alone; `san_to_move` strips them.
 fn strip_annotation_glyphs(tok: &str) -> String {
     tok.trim_end_matches(|c| c == '!' || c == '?').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn castles_with_check_suffix() {
+        let fen = "rnbk3r/ppp2ppp/5n2/4p3/1b2P3/2N1B3/PPP2PPP/R3KBNR w KQ - 0 1";
+        let game = parse_sans(&["O-O-O+".to_string()], Some(fen)).unwrap();
+        assert_eq!(game.ucis, vec!["e1c1"]);
+    }
 }
