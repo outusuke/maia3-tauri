@@ -54,14 +54,14 @@ function analyzeView() {
     return {
       fen,
       lastMove: variation.idx > 0 ? sq : null,
-      arrows: variation.free
+      arrows: (variation.free
         ? engineArrow(fen)
-        : sq ? [{ from: sq[0], to: sq[1], brush: "blue" }] : [],
+        : sq ? [{ from: sq[0], to: sq[1], brush: "blue" }] : []).concat(hiArrowsAt()),
       badge: null,
     };
   }
   const fen = azFenAt(azViewPly);
-  const arrows = analysisArrowsAt(azViewPly).concat(hiArrowsAt(azViewPly));
+  const arrows = analysisArrowsAt(azViewPly).concat(hiArrowsAt());
   for (const a of engineArrow(fen)) {
     if (!arrows.some((x) => x.from === a.from && x.to === a.to)) arrows.push(a);
   }

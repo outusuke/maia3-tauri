@@ -312,7 +312,7 @@ async function puzzleShowHuman(puzzle) {
   let data;
   try {
     await hiEnsureMaia();
-    data = await hiFetchMoves(ply, rating);
+    data = await hiFetchMoves(hiGameSlot(ply), rating);
   } catch (_) {
     return;
   }
