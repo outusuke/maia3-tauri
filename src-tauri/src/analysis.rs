@@ -3,7 +3,7 @@ use crate::engine::Engine;
 use crate::game::move_to_san;
 use crate::pgn::ParsedGame;
 use crate::sacrifice::is_sacrifice;
-use chess::{Board, ChessMove, Color, MoveGen};
+use chess::{Board, ChessMove, Color, MoveGen, Piece, Square};
 use serde::Serialize;
 use std::str::FromStr;
 use std::time::Duration;
@@ -59,6 +59,10 @@ pub struct AnalysisConfig {
     pub best_loss_wc: f64,
     // Min winning-chances gap to the second-best line for a top move to count as an only move.
     pub only_move_gap_wc: f64,
+    // Winning-chances level that separates winning / equal / losing for the outcome-change check.
+    pub outcome_wc: f64,
+    // Min gap to the second-best line for an outcome change to count, so straddling the cutoff doesn't.
+    pub outcome_gap_wc: f64,
 }
 
 impl Default for AnalysisConfig {
@@ -73,6 +77,8 @@ impl Default for AnalysisConfig {
             move_timeout: Duration::from_secs(8),
             best_loss_wc: 0.01,
             only_move_gap_wc: 0.2,
+            outcome_wc: 0.3,
+            outcome_gap_wc: 0.15,
         }
     }
 }
@@ -93,6 +99,16 @@ pub(crate) fn winning_chances(effective_cp: i32) -> f64 {
     2.0 / (1.0 + (-0.004 * effective_cp as f64).exp()) - 1.0
 }
 
+fn outcome_bucket(wc: f64, line: f64) -> i32 {
+    if wc >= line {
+        1
+    } else if wc <= -line {
+        -1
+    } else {
+        0
+    }
+}
+
 fn to_eval(cp: Option<i32>, mate: Option<i32>, sign: i32) -> Eval {
     match mate {
         Some(m) => Eval { mate: true, value: m * sign },
@@ -108,6 +124,31 @@ fn flip_if_black(value: i32, side_to_move: Color) -> i32 {
     }
 }
 
+fn piece_value(p: Piece) -> i32 {
+    match p {
+        Piece::Pawn => 1,
+        Piece::Knight | Piece::Bishop => 3,
+        Piece::Rook => 5,
+        Piece::Queen => 9,
+        Piece::King => 100,
+    }
+}
+
+// Free or favourable captures are too natural to call only moves.
+fn is_obvious_capture(board: &Board, mv: ChessMove, board_after: &Board) -> bool {
+    let victim = board.piece_on(mv.get_dest()).or_else(|| {
+        (board.piece_on(mv.get_source()) == Some(Piece::Pawn)
+            && mv.get_source().get_file() != mv.get_dest().get_file())
+        .then_some(Piece::Pawn)
+    });
+    let Some(victim) = victim else {
+        return false;
+    };
+    let mover = board.piece_on(mv.get_source()).unwrap_or(Piece::Pawn);
+    let can_retake = MoveGen::new_legal(board_after).any(|m| m.get_dest() == mv.get_dest());
+    !can_retake || piece_value(victim) >= piece_value(mover)
+}
+
 /// Reuses the top-line search for the played move's eval when it matches; otherwise runs a second single-line search.
 pub fn analyze_game(
     engine: &mut Engine,
@@ -117,6 +158,7 @@ pub fn analyze_game(
 ) -> Result<Vec<MoveAnalysis>, String> {
     let mut board = start_board;
     let mut out = Vec::with_capacity(parsed.ucis.len());
+    let mut capture_squares: Vec<Option<Square>> = Vec::new();
 
     for (ply, (uci, san)) in parsed.ucis.iter().zip(parsed.sans.iter()).enumerate() {
         let fen_before = format!("{board}");
@@ -131,6 +173,18 @@ pub fn analyze_game(
 
         let mv = ChessMove::from_str(uci).map_err(|e| format!("bad uci '{uci}': {e}"))?;
         let board_after = board.make_move_new(mv);
+        let is_capture = board.piece_on(mv.get_dest()).is_some()
+            || (board.piece_on(mv.get_source()) == Some(Piece::Pawn)
+                && mv.get_source().get_file() != mv.get_dest().get_file());
+        // Opponent's captures 1 and 3 plies back, so a recapture after one in-between move still counts.
+        let is_recapture = is_capture
+            && capture_squares
+                .iter()
+                .rev()
+                .step_by(2)
+                .take(2)
+                .any(|s| *s == Some(mv.get_dest()));
+        let obvious_capture = is_capture && is_obvious_capture(&board, mv, &board_after);
         let played_is_best = best.pv.first().map(|m| m.as_str()) == Some(uci.as_str());
 
         // Scores from the mover's perspective; the after-move search reports the opponent's.
@@ -161,16 +215,22 @@ pub fn analyze_game(
 
         let second = lines.iter().find(|l| l.multipv == 2);
         let second_effective = second.map(|l| effective_cp(l.score_cp, l.mate));
-        let gap_wc = second_effective.map_or(0.0, |e| winning_chances(best_effective) - winning_chances(e));
-        // Same cutoff WintrChess uses for "already winning anyway".
+        let best_wc = winning_chances(best_effective);
+        let gap_wc = second_effective.map_or(0.0, |e| best_wc - winning_chances(e));
+        let changes_outcome = second_effective.map_or(false, |e| {
+            gap_wc >= config.outcome_gap_wc
+                && outcome_bucket(best_wc, config.outcome_wc)
+                    > outcome_bucket(winning_chances(e), config.outcome_wc)
+        });
+        // Same cutoff WintrChess uses for "already winning anyway"; a second-best mate clears it too.
         let second_still_winning = second_effective.map_or(false, |e| e >= 700);
-        let already_mating = best.mate.map_or(false, |m| m > 0);
 
         if played_is_best
-            && gap_wc >= config.only_move_gap_wc
+            && (gap_wc >= config.only_move_gap_wc || changes_outcome)
             && !second_still_winning
-            && !already_mating
-            && played_effective >= 0
+            && best_wc > -config.outcome_wc
+            && !is_recapture
+            && !obvious_capture
             && MoveGen::new_legal(&board).len() > 1
         {
             grade = MoveGrade::OnlyMove;
@@ -239,6 +299,7 @@ pub fn analyze_game(
             acceptable_moves,
         });
 
+        capture_squares.push(is_capture.then(|| mv.get_dest()));
         board = board_after;
     }
 
