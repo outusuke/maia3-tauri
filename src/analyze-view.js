@@ -544,6 +544,7 @@ function loadAnalysisGame(game) {
   loadedGame = game;
   hiResetForGame();
   analysis = null;
+  evalHoverPly = null; // pointerleave doesn't fire while the graph is hidden
   variation = null;
   gradeFilter = null;
   // Games sent from the Play tab know which side the person played; a pasted PGN doesn't, so leave "Both" then.
