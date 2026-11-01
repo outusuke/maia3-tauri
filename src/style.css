@@ -262,6 +262,7 @@ button.small.wide { width: 100%; }
 
 #analyzeTab.hasGame #analyzeControlsPanel { order: 1; }
 #analyzeTab.hasGame #evalGraphBox { order: 2; }
+#analyzeTab.hasGame #accuracyPanel { order: 2; }
 #analyzeTab.hasGame #flaggedPanel { order: 3; }
 #analyzeTab.hasGame #moveListPanel { order: 0; }
 #analyzeTab.hasGame #analyzeControlsPanel.collapsed { order: 8; }
@@ -640,6 +641,13 @@ body.is-dragging, body.is-dragging * {
 #flaggedPanel.listCollapsed > h2 { margin-bottom: 0; }
 #flaggedPanel.listCollapsed > #flaggedList { display: none; }
 #flaggedCount { font-weight: 400; margin-left: 6px; }
+
+#accuracyBody { display: grid; align-items: center; gap: 8px 10px; font-variant-numeric: tabular-nums; }
+.accLabel { font-size: 13px; color: var(--muted); }
+.accValue { font-size: 15px; font-weight: 600; text-align: right; }
+.accOverall { font-size: 22px; font-weight: 700; color: var(--text); }
+.accLabel.accOverall { font-size: 14px; }
+#accuracyBody .sideTag { justify-self: end; }
 
 /* Human insights */
 .hiTitle { font-size: 13px; margin: 14px 0 6px; color: var(--muted); font-weight: 600; }

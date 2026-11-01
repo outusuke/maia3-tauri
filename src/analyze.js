@@ -23,6 +23,8 @@ const az = {
   moveListPanel: document.getElementById("moveListPanel"),
   moveList: document.getElementById("analyzeMoveList"),
   movesToggle: document.getElementById("az-moves-toggle"),
+  accuracyPanel: document.getElementById("accuracyPanel"),
+  accuracyBody: document.getElementById("accuracyBody"),
   flaggedPanel: document.getElementById("flaggedPanel"),
   flaggedList: document.getElementById("flaggedList"),
   flaggedHeading: document.getElementById("flaggedHeading"),

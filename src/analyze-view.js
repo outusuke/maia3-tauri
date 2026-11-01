@@ -552,6 +552,7 @@ function loadAnalysisGame(game) {
   azViewPly = game.sans.length;
   az.analyzeBtn.disabled = game.sans.length === 0;
   az.flaggedPanel.style.display = "none";
+  az.accuracyPanel.style.display = "none";
   az.controlsPanel.classList.remove("collapsed");
   az.analyzeStatus.textContent = `Loaded ${Math.ceil(game.sans.length / 2)} moves. Tap Analyze to grade them.`;
   az.moveListPanel.style.display = "block";
@@ -623,6 +624,7 @@ az.analyzeBtn.addEventListener("click", async () => {
     az.analyzeStatus.textContent = `Analyzed ${analysis.length} moves.`;
     renderAnalyzeMoveList();
     renderFlaggedList();
+    renderAccuracy();
     drawEvalGraph();
     az.moveListPanel.style.display = "block";
     az.flaggedPanel.style.display = "block";
@@ -685,7 +687,7 @@ function renderAnalyzeMoveList() {
 }
 az.sideSelect.addEventListener("change", () => {
   orientAnalyzeBoardForSide();
-  if (analysis) renderAnalyzeMoveList();
+  if (analysis) { renderAnalyzeMoveList(); renderAccuracy(); }
   if (!puzzleMode) renderAnalyzeBoard();
 });
 

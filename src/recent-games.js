@@ -41,6 +41,7 @@ function applyCachedAnalysis(game) {
   az.analyzeStatus.textContent = `Analyzed ${analysis.length} moves (saved from last time).`;
   renderAnalyzeMoveList();
   renderFlaggedList();
+  renderAccuracy();
   drawEvalGraph();
   az.moveListPanel.style.display = "block";
   az.flaggedPanel.style.display = "block";
