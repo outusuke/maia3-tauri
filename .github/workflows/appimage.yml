@@ -9,7 +9,7 @@ on:
 jobs:
   build-appimage:
     name: "Build AppImage"
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
