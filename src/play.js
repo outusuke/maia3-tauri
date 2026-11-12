@@ -333,7 +333,9 @@ function statusBanner() {
     case "stalemate": return "Draw by stalemate.";
     case "draw": return "Draw.";
     case "resigned": return "You resigned.";
-    default: return state.turn === playerColor ? "Your move." : "Maia-3 is thinking…";
+    default:
+      if (state.turn !== playerColor) return "Maia-3 is thinking…";
+      return posHistory.length <= 1 ? "Your move — drag a piece, or tap it and then a square." : "Your move.";
   }
 }
 
@@ -525,7 +527,7 @@ function renderMoveList() {
   if (history.length === 0) {
     const empty = document.createElement("li");
     empty.className = "move-empty";
-    empty.textContent = "No moves yet.";
+    empty.textContent = "Moves will appear here as you play.";
     list.appendChild(empty);
     return;
   }
