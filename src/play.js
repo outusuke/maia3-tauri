@@ -140,6 +140,8 @@ document.addEventListener("keydown", (e) => {
   if (!document.getElementById("playTab").classList.contains("active")) return;
   if (document.getElementById("setup-overlay").classList.contains("show")) return;
   if (e.target.closest && e.target.closest("input, textarea, select, summary")) return;
+  // while the New game dialog is open only N (and Esc, handled elsewhere) apply
+  if (!els.setupPanel.classList.contains("collapsed") && e.key.toLowerCase() !== "n") return;
 
   const navTargets = { ArrowLeft: viewPly - 1, ArrowRight: viewPly + 1, Home: 0, End: posHistory.length - 1 };
   if (e.key in navTargets) {
@@ -154,9 +156,10 @@ document.addEventListener("keydown", (e) => {
   } else if (key === "u" && !els.undoBtn.disabled) {
     e.preventDefault();
     els.undoBtn.click();
-  } else if (key === "n" && !els.startBtn.disabled) {
+  } else if (key === "n") {
     e.preventDefault();
-    els.startBtn.click();
+    if (els.setupPanel.classList.contains("collapsed")) els.setupPanel.classList.remove("collapsed");
+    else if (!els.startBtn.disabled) els.startBtn.click();
   }
 });
 
@@ -177,7 +180,6 @@ function updateAdvancedSummary() {
   els.advancedSummary.textContent = els.startFenInput.value.trim() ? "Advanced · custom position" : "Advanced";
 }
 els.startFenInput.addEventListener("input", updateAdvancedSummary);
-els.setupPanel.querySelector("h2").addEventListener("click", () => els.setupPanel.classList.toggle("collapsed"));
 els.analyzeThisBtn.addEventListener("click", sendGameToAnalyze);
 
 function hideFenError() { els.fenError.style.display = "none"; els.fenError.textContent = ""; }
@@ -406,7 +408,6 @@ function updateControls() {
   if (isGameOver()) {
     if (!gameOverHandled) {
       saveRecentGame();
-      els.setupPanel.classList.remove("collapsed");
     }
     gameOverHandled = true;
   } else {

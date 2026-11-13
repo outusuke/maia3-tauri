@@ -33,8 +33,11 @@
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.elo = String(elo);
-    b.textContent = label;
-    b.title = `Elo ${elo}`;
+    const num = document.createElement("b"), name = document.createElement("span");
+    num.textContent = String(elo);
+    name.textContent = label;
+    b.append(num, name);
+    b.title = `${label} · Elo ${elo}`;
     presetBox.appendChild(b);
   });
   presetBox.addEventListener("click", (e) => {
@@ -47,16 +50,15 @@
 
   function syncElo() {
     const elo = parseInt(els.eloSlider.value, 10);
-    $("elo-level").textContent = `· ${levelName(elo)}`;
+    $("elo-level").textContent = levelName(elo);
     presetBox.querySelectorAll("button").forEach((b) => b.classList.toggle("active", Number(b.dataset.elo) === elo));
     relabelStrips();
-    syncStartCard();
+    syncOpp();
   }
   els.eloSlider.addEventListener("input", syncElo);
   // session restore sets the label text without firing events
   new MutationObserver(syncElo).observe(els.eloValue, { childList: true, characterData: true, subtree: true });
-  els.sideSelect.addEventListener("click", () => setTimeout(syncStartCard, 0));
-
+  
   // ---------- player strips: "You" and "Maia 1500" instead of White / Black ----------
   function relabelStrips() {
     if (!(gameStarted || posHistory.length > 1)) return;
@@ -80,23 +82,57 @@
     if (/^(Checkmate|Draw|You resigned)/.test(t)) return "over";
     return "";
   }
-  wrap("setStatus", { after: (_, [t]) => { els.status.dataset.mood = moodOf(String(t)); } });
+  wrap("setStatus", {
+  after: (_, [t]) => {
+    const mood = moodOf(String(t));
+    els.status.dataset.mood = mood;
+    // the status line sits behind the dialog, so show start-up errors inside it
+    const err = $("sheet-error");
+    err.textContent = mood === "error" ? String(t) : "";
+    err.hidden = mood !== "error";
+    syncOpp();
+  },
+});
 
-  // ---------- start prompt on the board ----------
-  const startCard = $("startCard"), startCardBtn = $("startCardBtn"), startCardText = $("startCardText");
-  function syncStartCard() {
-    const elo = parseInt(els.eloSlider.value, 10);
-    const side = { white: "as White", black: "as Black", random: "on a random side" }[selectedSide()];
-    startCardText.textContent = activeModelReady
-      ? `You'll play ${side} against Maia at ${elo} (${levelName(elo).toLowerCase()}).`
-      : "This build has no Maia-3 model bundled, so games can't start.";
-    startCardBtn.disabled = els.startBtn.disabled;
-    startCardBtn.textContent = els.startBtn.textContent;
+  // ---------- New game dialog (the old side panel, lifted into a modal / bottom sheet) ----------
+  const sheet = els.setupPanel;
+  document.body.appendChild(sheet);
+  const scrim = document.createElement("div");
+  scrim.id = "setupScrim";
+  scrim.hidden = true;
+  document.body.appendChild(scrim);
+  document.body.dataset.tab = "play";
+  wrap("switchTab", { after: (_, [name]) => { document.body.dataset.tab = name; syncSheet(); } });
+
+  const startCard = $("startCard");
+  const sheetIsOpen = () => !sheet.classList.contains("collapsed");
+  const closeSheet = () => sheet.classList.add("collapsed");
+  let wasOpen = false;
+  function syncSheet() {
+    const open = sheetIsOpen() && document.body.dataset.tab !== "analyze";
+    scrim.hidden = !open;
+    if (open && !wasOpen) els.startBtn.focus({ preventScroll: true });
+    wasOpen = open;
+    syncPlayUX();
   }
-  startCardBtn.addEventListener("click", () => els.startBtn.click());
-  new MutationObserver(syncStartCard).observe(els.startBtn, {
-    childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ["disabled"],
+  new MutationObserver(syncSheet).observe(sheet, { attributes: true, attributeFilter: ["class"] });
+  $("setup-close").addEventListener("click", closeSheet);
+  scrim.addEventListener("click", closeSheet);
+  $("startCardBtn").addEventListener("click", () => sheet.classList.remove("collapsed"));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && sheetIsOpen() && document.body.dataset.tab === "play") closeSheet();
   });
+
+  // ---------- opponent card in the side panel ----------
+  function syncOpp() {
+    const elo = parseInt(els.eloSlider.value, 10);
+    const inGame = gameStarted || posHistory.length > 1;
+    const mood = inGame ? (els.status.dataset.mood || "") : "";
+    $("oppName").textContent = `Maia ${elo}`;
+    $("oppSub").textContent = inGame ? `${levelName(elo)} · You play ${playerColor === "white" ? "White" : "Black"}` : levelName(elo);
+    $("oppState").textContent = { thinking: "Thinking", yours: "Your turn", over: "Game over" }[mood] || "";
+    $("oppCard").dataset.mood = mood;
+  }
 
   // ---------- result card ----------
   const resultCard = $("resultCard");
@@ -130,11 +166,7 @@
   $("resultClose").addEventListener("click", hideResult);
   $("resultReview").addEventListener("click", () => { hideResult(); els.analyzeThisBtn.click(); });
   $("resultRematch").addEventListener("click", () => { hideResult(); els.startBtn.click(); });
-  $("resultNew").addEventListener("click", () => {
-    hideResult();
-    els.setupPanel.classList.remove("collapsed");
-    $("playSide").scrollTo({ top: 0, behavior: "smooth" });
-  });
+  $("resultNew").addEventListener("click", () => { hideResult(); sheet.classList.remove("collapsed"); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !resultCard.hidden) hideResult(); });
 
   // ---------- keep the Play screen in sync ----------
@@ -142,8 +174,9 @@
     const hasGame = gameStarted || posHistory.length > 1;
     document.body.classList.toggle("noGame", !hasGame);
     els.resignBtn.disabled = !gameStarted || isGameOver();
-    startCard.hidden = hasGame;
-    if (!hasGame) syncStartCard();
+    startCard.hidden = hasGame || sheetIsOpen();
+    $("sheet-note").hidden = !(gameStarted && !isGameOver());
+    syncOpp();
 
     const over = isGameOver();
     if (!sessionIsReady()) {          // restoring a saved game: don't pop the result card
@@ -156,8 +189,7 @@
     }
   }
   wrap("updateControls", { after: syncPlayUX });
-  wrap("syncStartButton", { after: syncStartCard });
-
+  
   // ---------- two-step confirms (no modal, no accidental loss) ----------
   function twoStep(btn, shouldConfirm, armedText) {
     let timer = null, original = null;
@@ -191,8 +223,14 @@
       li.classList.toggle("current", i + 1 === cur);
     });
     reviewEmpty.hidden = loaded;
+    az.tab.classList.toggle("analyzed", analyzed);
   }
   $("reviewPlayBtn").addEventListener("click", () => switchTab("play"));
+  steps.forEach((li, i) => li.addEventListener("click", () => {
+    if (i === 0) { az.loadPanel.classList.remove("collapsed"); recentPanel.classList.remove("collapsed"); az.pgnInput.focus(); }
+    else if (i === 1 && loadedGame && !analysis && !az.analyzeBtn.disabled) az.analyzeBtn.click();
+    else if (i === 2 && analysis && az.practiceBtn.style.display !== "none") az.practiceBtn.click();
+  }));
 
   let autoUntil = 0;
   $("recentList").addEventListener("click", () => { autoUntil = Date.now() + 3000; }, true);
@@ -201,6 +239,8 @@
   wrap("loadAnalysisGame", {
     after: (_, [game]) => {
       syncReview();
+      az.loadPanel.classList.add("collapsed");     // get the loaders out of the way once a game is open
+      recentPanel.classList.add("collapsed");
       const wanted = sessionIsReady() && (game.myColor || Date.now() < autoUntil);
       if (!wanted || !game.sans.length) return;
       autoUntil = 0;
@@ -229,6 +269,6 @@
   });
 
   syncElo();
-  syncPlayUX();
+  syncSheet();
   syncReview();
 })();

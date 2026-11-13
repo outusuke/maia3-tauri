@@ -12,16 +12,19 @@
 @keyframes uxDots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75%, 100% { content: "..."; } }
 @media (prefers-reduced-motion: reduce) { .statusLine[data-mood="thinking"]::after { animation: none; content: "…"; } }
 
-/* ---- strength presets ---- */
-.eloLevel { color: var(--accent); font-weight: 600; font-size: 12.5px; white-space: nowrap; }
-.fieldHead label { flex: 1; min-width: 0; }
-.presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; margin-top: 10px; }
+/* ---- strength cards ---- */
+.eloLevel { color: var(--accent); font-weight: 600; white-space: nowrap; }
+.presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .presets button {
-  min-height: 34px; padding: 0 2px; border: 1px solid var(--border); border-radius: 999px;
-  background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; white-space: nowrap;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  min-height: 60px; padding: 8px 2px; border: 1px solid var(--border); border-radius: 12px;
+  background: var(--panel-bg-2); color: var(--muted); cursor: pointer;
 }
-.presets button:hover { color: var(--text); border-color: var(--accent); }
-.presets button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 700; }
+.presets button b { font-size: 16px; font-weight: 700; color: var(--text); }
+.presets button span { font-size: 11px; }
+.presets button:hover { border-color: var(--accent); }
+.presets button.active { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.presets button.active b { color: var(--on-accent); }
 .presets button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .techName { opacity: .65; font-size: .92em; }
 #advanced-settings > summary:hover { color: var(--text); }
@@ -29,8 +32,8 @@
 /* ---- two-step confirmations (resign / abandon game) ---- */
 button.armed { background: var(--danger) !important; color: #1a0b0b !important; font-weight: 700; }
 
-/* ---- before a game: hide controls that can't do anything yet ---- */
-body.noGame #moves-panel { display: none; }
+/* ---- before a game: only "New game" makes sense ---- */
+body.noGame #moves-panel > .actions > :not(#new-game-btn) { display: none; }
 
 /* ---- board overlays (start prompt, game result, review empty state) ---- */
 .boardFrame { position: relative; }
@@ -89,4 +92,98 @@ kbd {
   .overlayCard h3 { font-size: 19px; }
   .stepper li { padding: 7px 8px; font-size: 11.5px; }
   .presets button { min-height: 38px; }
+}
+
+/* ================= New game dialog (modal on desktop, bottom sheet on phones) ================= */
+#setup-panel {
+  position: fixed; z-index: 60; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: min(468px, calc(100vw - 32px)); max-height: calc(var(--vh) - 32px); overflow-y: auto;
+  padding: 22px; border-radius: 22px; margin: 0;
+  box-shadow: 0 28px 90px rgba(0, 0, 0, .6), 0 0 0 1px var(--border);
+  animation: uxSheet .2s ease-out;
+}
+#setup-panel.collapsed, body[data-tab="analyze"] #setup-panel, body[data-tab="analyze"] #setupScrim { display: none; }
+#setupScrim { position: fixed; inset: 0; z-index: 55; background: rgba(6, 8, 13, .62); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); animation: uxFade .18s ease-out; }
+#setupScrim[hidden] { display: none; }
+@keyframes uxSheet { from { opacity: 0; transform: translate(-50%, -47%); } to { opacity: 1; transform: translate(-50%, -50%); } }
+@keyframes uxSheetUp { from { transform: translateY(40px); opacity: .4; } to { transform: none; opacity: 1; } }
+.sheetHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+#setup-panel h2 { margin: 0; font-size: 24px; font-weight: 700; text-transform: none; letter-spacing: -0.02em; color: var(--text); }
+.sheetSub { margin: 4px 0 0; font-size: 13.5px; color: var(--muted); }
+.sheetClose { flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--panel-bg-2); color: var(--muted); font-size: 14px; cursor: pointer; }
+.sheetClose:hover { color: var(--text); }
+#setup-panel .field { margin-bottom: 20px; }
+#setup-panel .fieldLabel, #setup-panel .fieldHead label { font-size: 13px; font-weight: 600; color: var(--text); }
+#setup-panel .fieldHead { margin-bottom: 10px; }
+.eloRow { display: flex; margin: 14px 0 6px; font-size: 13.5px; color: var(--muted); }
+.eloRow b { color: var(--text); font-size: 17px; }
+.sheetError { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: rgba(255, 143, 138, .12); color: var(--danger); font-size: 13px; }
+.sheetError[hidden], .sheetNote[hidden] { display: none; }
+.sheetNote { margin: 0 0 12px; }
+#setup-panel #start-btn { min-height: 54px; font-size: 16px; border-radius: 14px; margin-bottom: 10px; }
+
+/* side picker: big piece cards */
+#side-select { gap: 8px; padding: 0; background: none; }
+#side-select button {
+  min-height: 94px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 8px;
+  padding: 10px 6px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel-bg-2); color: var(--muted); font-size: 13px;
+}
+#side-select button::before { content: ""; width: 46px; height: 46px; background: no-repeat center / contain; }
+#side-select button[data-value="white"]::before { background-image: url("img/chesspieces/wikipedia/wK.png"); }
+#side-select button[data-value="black"]::before { background-image: url("img/chesspieces/wikipedia/bK.png"); }
+#side-select button[data-value="random"]::before {
+  width: 58px; background-image: url("img/chesspieces/wikipedia/wK.png"), url("img/chesspieces/wikipedia/bK.png");
+  background-size: 36px auto, 36px auto; background-position: 0 50%, 100% 50%;
+}
+#side-select button:hover { border-color: var(--accent); color: var(--text); }
+#side-select button.active { background: rgba(122, 162, 255, .18); border-color: var(--accent); color: var(--text); font-weight: 700; box-shadow: inset 0 0 0 1px var(--accent); }
+
+/* ================= side panel as a game panel ================= */
+.oppCard { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 16px; background: var(--panel-bg); }
+.oppAvatar {
+  position: relative; flex: none; width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(135deg, #7aa2ff, #9b4fd8); color: #fff; font-weight: 800; font-size: 18px;
+}
+.oppCard[data-mood="thinking"] .oppAvatar::after { content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--accent); animation: uxPulse 1.2s ease-out infinite; }
+@keyframes uxPulse { from { transform: scale(.9); opacity: 1; } to { transform: scale(1.25); opacity: 0; } }
+.oppInfo { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.oppInfo b { font-size: 15px; }
+.oppInfo span { font-size: 12.5px; color: var(--muted); }
+.oppState { padding: 4px 10px; border-radius: 999px; background: var(--panel-bg-2); color: var(--muted); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.oppState:empty { display: none; }
+.oppCard[data-mood="yours"] .oppState { background: rgba(111, 208, 140, .16); color: #6fd08c; }
+.oppCard[data-mood="thinking"] .oppState { background: rgba(122, 162, 255, .16); color: var(--accent); }
+@media (prefers-reduced-motion: reduce) { #setup-panel, #setupScrim { animation: none; } .oppCard[data-mood="thinking"] .oppAvatar::after { animation: none; } }
+body[data-tab="analyze"] .oppCard { display: none; }
+
+#moves-panel > .actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#moves-panel > .actions #new-game-btn { display: block; grid-column: 1 / -1; min-height: 44px; font-size: 14px; }
+#moves-panel > .actions .small { min-height: 40px; }
+
+/* ================= Review: results first once a game is analyzed ================= */
+.stepper { order: -3; }
+.stepper li { cursor: pointer; }
+#analyzeTab.analyzed #accuracyPanel { order: 1; }
+#analyzeTab.analyzed #flaggedPanel { order: 2; }
+#analyzeTab.analyzed #evalGraphBox { order: 3; }
+#analyzeTab.analyzed #moveListPanel { order: 4; }
+#analyzeTab.analyzed #recentPanel { order: 8; }
+#analyzeTab.analyzed #loadPanel { order: 9; }
+#analyzeTab.analyzed #analyzeControlsPanel { order: 10; }
+
+/* ================= minimal theme: softer, roomier ================= */
+:root[data-theme="minimal"] body { background: radial-gradient(900px 520px at 78% -8%, rgba(122, 162, 255, .10), transparent 60%), var(--bg); }
+:root[data-theme="minimal"] .panel { border-radius: 18px; padding: 16px; }
+:root[data-theme="minimal"] .panel h2 { text-transform: none; letter-spacing: 0; font-size: 15px; font-weight: 650; color: var(--text); }
+:root[data-theme="minimal"] #board, :root[data-theme="minimal"] #analyzeBoard { border-radius: 10px; overflow: hidden; box-shadow: 0 12px 34px rgba(0, 0, 0, .45); }
+:root[data-theme="minimal"] button.primary { border-radius: 14px; box-shadow: 0 6px 18px rgba(122, 162, 255, .25); }
+
+@media (max-width: 759px) {
+  #setup-panel {
+    left: 0; right: 0; top: auto; bottom: 0; transform: none; width: auto; margin: 0;
+    max-height: calc(var(--vh) - 24px - env(safe-area-inset-top)); border-radius: 22px 22px 0 0;
+    padding: 20px 18px calc(20px + env(safe-area-inset-bottom)); animation: uxSheetUp .22s ease-out;
+  }
+  .oppCard { display: none; }
+  #side-select button { min-height: 84px; }
 }

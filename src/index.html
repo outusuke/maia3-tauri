@@ -34,9 +34,9 @@
         <div class="boardFrame"><div id="board" aria-label="chess board"></div>
           <div class="boardOverlay" id="startCard" hidden>
             <div class="overlayCard">
-              <h3>Ready to play?</h3>
-              <p id="startCardText">Pick your side and strength, then start.</p>
-              <button type="button" class="primary" id="startCardBtn">Start game</button>
+              <h3>No game in progress</h3>
+              <p>Start a game against Maia at the strength you choose.</p>
+              <button type="button" class="primary" id="startCardBtn">New game</button>
             </div>
           </div>
           <div class="boardOverlay" id="resultCard" hidden role="dialog" aria-labelledby="resultTitle">
@@ -73,8 +73,14 @@
       </section>
 
       <aside id="playSide" class="side">
-        <div class="panel collapsible" id="setup-panel">
-          <h2>New game</h2>
+        <div class="panel sheet" id="setup-panel" role="dialog" aria-modal="true" aria-labelledby="setup-title">
+          <div class="sheetHead">
+            <div>
+              <h2 id="setup-title">New game</h2>
+              <p class="sheetSub">Play a human-like opponent at the strength you choose.</p>
+            </div>
+            <button type="button" class="sheetClose" id="setup-close" aria-label="Close">&#10005;</button>
+          </div>
 
           <div class="field">
             <span class="fieldLabel">Play as</span>
@@ -87,16 +93,19 @@
 
           <div class="field" id="elo-field">
             <div class="fieldHead">
-              <label for="elo-slider">Opponent strength <b id="elo-value">1500</b> <span id="elo-level" class="eloLevel"></span></label>
+              <label for="elo-slider">Opponent strength</label>
               <span id="active-model-name" title="Maia-3 model in use">Checking…</span>
               <select id="model-select" hidden title="Maia-3 model"></select>
             </div>
-            <input type="range" id="elo-slider" min="600" max="2600" step="50" value="1500" aria-describedby="elo-hint" />
             <div class="presets" id="elo-presets" role="group" aria-label="Strength presets"></div>
-            <p class="hint" id="elo-hint">Elo is a chess rating. Maia plays like a typical player at this level, mistakes included. You can change it mid-game.</p>
+            <div class="eloRow"><span><b id="elo-value">1500</b> Elo &middot; <span id="elo-level" class="eloLevel"></span></span></div>
+            <input type="range" id="elo-slider" min="600" max="2600" step="50" value="1500" aria-describedby="elo-hint" />
+            <p class="hint" id="elo-hint">Elo is a chess rating. Maia plays like a typical player at this level, mistakes included.</p>
             <p class="hint" id="no-model-hint" style="display:none;">This build has no Maia-3 model bundled.</p>
           </div>
 
+          <p class="sheetError" id="sheet-error" role="alert" hidden></p>
+          <p class="hint sheetNote" id="sheet-note" hidden>A game is in progress. Strength changes apply to it right away; starting a new game abandons it.</p>
           <button id="start-btn" class="primary" title="Shortcut: N">Start game</button>
 
           <details id="advanced-settings">
@@ -135,7 +144,12 @@
             </div>
             <button class="small wide" id="open-setup-btn" type="button">Arrange pieces on a board…</button>
           </details>
+        </div>
 
+        <div class="oppCard" id="oppCard">
+          <div class="oppAvatar" aria-hidden="true">M</div>
+          <div class="oppInfo"><b id="oppName">Maia</b><span id="oppSub"></span></div>
+          <span class="oppState" id="oppState"></span>
         </div>
 
         <div class="panel movesPanel" id="moves-panel">
@@ -217,7 +231,7 @@
           <button type="button" role="tab" aria-selected="false" data-pane="engine">Engine</button>
         </div>
 
-        <div class="panel collapsible collapsed paneMoves" id="recentPanel" style="display:none;">
+        <div class="panel collapsible paneMoves" id="recentPanel" style="display:none;">
           <h2>Recent games</h2>
           <div id="recentList"></div>
           <div class="btnRow"><button class="small" id="recentClearBtn">Clear list</button></div>
