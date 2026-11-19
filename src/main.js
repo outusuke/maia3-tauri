@@ -115,6 +115,7 @@ function restoreAnalyze(a) {
   loadAnalysisGame(a.game);
   az.sideSelect.value = a.side;
   az.depthSelect.value = a.depthSelect;
+  az.depthSelect.dispatchEvent(new Event("input"));
   az.practiceSideSelect.value = a.practiceSide;
   if (a.analysis) {
     analysis = a.analysis;

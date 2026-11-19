@@ -56,6 +56,7 @@ const az = {
   materialBottom: document.getElementById("aMaterialBottom"),
 };
 
+let analyzeOpts = { lines: 3, capSecs: 5 }; // capSecs 0 = no per-search time cap
 let loadedGame = null;      // {startFen, sans, fens}
 let analysis = null;        // Vec<MoveAnalysis> from analyze_moves
 let azViewPly = 0;          // 0 = start position, i = after sans[i-1]

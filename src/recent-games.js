@@ -37,7 +37,7 @@ function applyCachedAnalysis(game) {
   if (!hit || hit.analysis.length !== game.sans.length) return;
   analysis = hit.analysis;
   analysisDepth = hit.depth;
-  if ([...az.depthSelect.options].some((o) => o.value === String(hit.depth))) az.depthSelect.value = String(hit.depth);
+  if (hit.depth >= Number(az.depthSelect.min) && hit.depth <= Number(az.depthSelect.max)) az.depthSelect.value = String(hit.depth);
   az.analyzeStatus.textContent = `Analyzed ${analysis.length} moves (saved from last time).`;
   renderAnalyzeMoveList();
   renderFlaggedList();

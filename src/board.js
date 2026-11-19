@@ -403,6 +403,10 @@ function renderMaterialSide(el, pieces, lead, side) {
     span.textContent = `+${lead}`;
     el.appendChild(span);
   }
+  const clk = document.createElement("span");
+  clk.className = "clk";
+  clk.dataset.side = side;
+  el.appendChild(clk);
 }
 
 // Which bar shows which color's captures follows the board's orientation, same as Lichess.

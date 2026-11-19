@@ -459,6 +459,7 @@ fn analyze_moves(
     start_fen: Option<String>,
     depth: Option<u32>,
     multipv: Option<u32>,
+    move_time_secs: Option<u64>,
 ) -> Result<Vec<MoveAnalysis>, String> {
     check_len("moves", sans.len(), MAX_PLIES)?;
     let parsed = pgn::parse_sans(&sans, start_fen.as_deref())?;
@@ -471,6 +472,10 @@ fn analyze_moves(
     }
     if let Some(mpv) = multipv {
         config.multipv = mpv.clamp(1, MAX_MULTIPV);
+    }
+    if let Some(secs) = move_time_secs {
+        // 0 means "no cap"; Stockfish still stops at the requested depth
+        config.move_timeout = Duration::from_secs(if secs == 0 { 3600 } else { secs.min(3600) });
     }
 
     log::info!(

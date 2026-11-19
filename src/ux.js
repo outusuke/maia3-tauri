@@ -16,28 +16,15 @@
     };
   }
 
-  // ---------- opponent strength: presets + a human label ----------
-  const PRESETS = [[800, "Beginner"], [1100, "Casual"], [1500, "Club"], [1900, "Strong"], [2300, "Expert"]];
-  function levelName(elo) {
-    if (elo < 900) return "Beginner";
-    if (elo < 1200) return "Casual player";
-    if (elo < 1500) return "Intermediate";
-    if (elo < 1800) return "Club player";
-    if (elo < 2100) return "Strong club player";
-    if (elo < 2400) return "Expert";
-    return "Master level";
-  }
+  // ---------- opponent strength: presets ----------
+  const PRESETS = [800, 1200, 1500, 2000, 2400];
 
   const presetBox = $("elo-presets");
-  PRESETS.forEach(([elo, label]) => {
+  PRESETS.forEach((elo) => {
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.elo = String(elo);
-    const num = document.createElement("b"), name = document.createElement("span");
-    num.textContent = String(elo);
-    name.textContent = label;
-    b.append(num, name);
-    b.title = `${label} · Elo ${elo}`;
+    b.textContent = String(elo);
     presetBox.appendChild(b);
   });
   presetBox.addEventListener("click", (e) => {
@@ -50,7 +37,6 @@
 
   function syncElo() {
     const elo = parseInt(els.eloSlider.value, 10);
-    $("elo-level").textContent = levelName(elo);
     presetBox.querySelectorAll("button").forEach((b) => b.classList.toggle("active", Number(b.dataset.elo) === elo));
     relabelStrips();
     syncOpp();
@@ -67,7 +53,7 @@
       const dot = name && name.querySelector(".pDot");
       if (!dot) continue;
       const color = dot.classList.contains("white") ? "white" : "black";
-      const label = color === playerColor ? "You" : `Maia ${els.eloSlider.value}`;
+      const label = color === playerColor ? "You" : `Maia-3 ${els.eloSlider.value}`;
       const text = [...name.childNodes].find((n) => n.nodeType === 3);
       if (text && text.nodeValue !== label) text.nodeValue = label;
     }
@@ -79,7 +65,7 @@
     if (/^(Could not|Engine error|Move rejected|Fix the|Stockfish)/.test(t)) return "error";
     if (/^Your move/.test(t)) return "yours";
     if (/thinking|^Starting Maia|^Loading/.test(t)) return "thinking";
-    if (/^(Checkmate|Draw|You resigned)/.test(t)) return "over";
+    if (/^(Checkmate|Draw|You resigned|Time out)/.test(t)) return "over";
     return "";
   }
   wrap("setStatus", {
@@ -94,9 +80,8 @@
   },
 });
 
-  // ---------- New game dialog (the old side panel, lifted into a modal / bottom sheet) ----------
+  // ---------- New game panel: inline on wide minimal layouts, a modal / bottom sheet elsewhere ----------
   const sheet = els.setupPanel;
-  document.body.appendChild(sheet);
   const scrim = document.createElement("div");
   scrim.id = "setupScrim";
   scrim.hidden = true;
@@ -128,8 +113,8 @@
     const elo = parseInt(els.eloSlider.value, 10);
     const inGame = gameStarted || posHistory.length > 1;
     const mood = inGame ? (els.status.dataset.mood || "") : "";
-    $("oppName").textContent = `Maia ${elo}`;
-    $("oppSub").textContent = inGame ? `${levelName(elo)} · You play ${playerColor === "white" ? "White" : "Black"}` : levelName(elo);
+    $("oppName").textContent = `Maia-3 · ${elo}`;
+    $("oppSub").textContent = inGame ? `You play ${playerColor === "white" ? "White" : "Black"}` : "";
     $("oppState").textContent = { thinking: "Thinking", yours: "Your turn", over: "Game over" }[mood] || "";
     $("oppCard").dataset.mood = mood;
   }
@@ -150,6 +135,9 @@
       text = won ? "Checkmate. Nicely played." : "Checkmate. Review the game to see where it turned.";
     } else if (state.status === "resigned") {
       outcome = "loss"; title = "You resigned"; text = "Review the game to see what happened.";
+    } else if (state.status === "timeout") {
+      const won = state.winner === playerColor;
+      outcome = won ? "win" : "loss"; title = won ? "You won on time" : "Out of time"; text = won ? "Maia ran out of time." : "Your clock ran out.";
     } else if (state.status === "stalemate") {
       text = "Stalemate: no legal moves, but no check.";
     } else {
@@ -268,7 +256,118 @@
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); az.loadBtn.click(); }
   });
 
+  const navStatus = $("navStatus");
+  function syncNavStatus() {
+    const model = activeModelStore.get();
+    navStatus.textContent = activeModelReady && model ? `Offline · ${model}` : "Offline";
+  }
+  new MutationObserver(syncNavStatus).observe(els.activeModelName, { childList: true, characterData: true, subtree: true });
+
+  const practiceTab = $("tabBtnPractice");
+  function syncPracticeNav() {
+    const practicing = document.body.dataset.tab === "analyze" && puzzleMode;
+    document.body.classList.toggle("practicing", practicing);
+    practiceTab.classList.toggle("active", practicing);
+  }
+  practiceTab.addEventListener("click", () => {
+    switchTab("analyze");
+    if (puzzleMode) return;
+    const ready = analysis && az.practiceBtn.style.display !== "none" && !az.practiceBtn.disabled;
+    if (ready) az.practiceBtn.click();
+    else (loadedGame ? az.analyzeStatus : az.loadError).textContent = analysis ? "No mistakes to practice in this game." : "Analyze a game first, then practice its mistakes.";
+  });
+  wrap("switchTab", { after: syncPracticeNav });
+  ["enterPuzzleMode", "exitPuzzleMode"].forEach((n) => wrap(n, { after: syncPracticeNav }));
+
+  function showLoader() {
+    az.loadPanel.classList.remove("collapsed");
+    recentPanel.classList.remove("collapsed");
+    az.pgnInput.focus({ preventScroll: true });
+    az.loadPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  $("import-link").addEventListener("click", () => { switchTab("analyze"); showLoader(); });
+  $("importAnotherBtn").addEventListener("click", showLoader);
+
+  const drop = $("pgnDrop"), fileIn = $("pgnFile");
+  async function readPgnFile(file) {
+    if (!file) return;
+    try {
+      az.pgnInput.value = await file.text();
+      az.loadError.textContent = "";
+      az.pgnInput.dispatchEvent(new Event("input"));
+    } catch {
+      az.loadError.textContent = "Couldn't read that file.";
+    }
+  }
+  fileIn.addEventListener("change", () => readPgnFile(fileIn.files[0]));
+  ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => readPgnFile(e.dataTransfer.files[0]));
+
+  // movetext tokens only: headers, comments, move numbers and results don't count
+  function approxPlies(text) {
+    const moves = text.replace(/^\s*\[.*\]\s*$/gm, " ").replace(/\{[^}]*\}|;.*$/gm, " ").replace(/\d+\.(\.\.)?/g, " ")
+      .split(/\s+/).filter((t) => t && !/^(1-0|0-1|1\/2-1\/2|\*|\$\d+)$/.test(t));
+    return moves.length;
+  }
+  const est = $("analyzeEst");
+  function syncEst() {
+    $("depthVal").textContent = az.depthSelect.value;
+    const plies = loadedGame ? loadedGame.sans.length : approxPlies(az.pgnInput.value);
+    est.hidden = !plies;
+    if (!plies) return;
+    const cap = analyzeOpts.capSecs, depth = az.depthSelect.value;
+    if (cap) {
+      const mins = Math.max(1, Math.ceil((plies * 2 * cap) / 60));
+      est.className = "est";
+      est.innerHTML = `Worst case: <b>≤ ${mins} min</b> (${plies} moves × 2 searches × ${cap}s cap). Usually much faster, since a search stops early once it reaches depth ${depth}.`;
+    } else {
+      est.className = "est warn";
+      est.innerHTML = `<b>No upper limit.</b> Depth ${depth} with no time cap can take a very long time on older CPUs.`;
+    }
+  }
+  function chips(box, key, attr) {
+    box.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      box.querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
+      analyzeOpts[key] = Number(b.dataset[attr]);
+      syncEst();
+    });
+  }
+  chips($("lineChips"), "lines", "lines");
+  chips($("capChips"), "capSecs", "cap");
+  az.depthSelect.addEventListener("input", syncEst);
+  az.pgnInput.addEventListener("input", () => {
+    if (!loadedGame) az.analyzeBtn.disabled = !az.pgnInput.value.trim();
+    syncEst();
+  });
+  // before a game is loaded the Analyze button loads the pasted PGN, which then analyzes itself
+  az.analyzeBtn.addEventListener("click", (e) => {
+    if (loadedGame) return;
+    e.stopImmediatePropagation();
+    az.loadBtn.click();
+  }, true);
+  wrap("loadAnalysisGame", { after: syncEst });
+
+  const evalBar = $("evalBar"), evalFill = $("evalBarFill");
+  function syncEvalBar() {
+    evalBar.hidden = !analysis || analysis.length === 0;
+    if (evalBar.hidden) return;
+    const ply = Math.min(azViewPly, analysis.length);
+    const cp = ply === 0
+      ? evalWhiteCp(analysis[0].evalBeforeCp, analysis[0].mateBefore)
+      : evalWhiteCp(analysis[ply - 1].evalAfterCp, analysis[ply - 1].mateAfter);
+    evalFill.style.height = `${evalWinPct(cp)}%`;
+    evalBar.classList.toggle("flipped", azFlipped);
+  }
+  ["renderAnalyzeBoard", "renderAccuracy", "loadAnalysisGame"].forEach((n) => wrap(n, { after: syncEvalBar }));
+
   syncElo();
   syncSheet();
   syncReview();
+  syncNavStatus();
+  syncPracticeNav();
+  syncEvalBar();
+  syncEst();
 })();

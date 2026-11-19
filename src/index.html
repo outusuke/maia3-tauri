@@ -12,6 +12,7 @@
 <body>
   <div id="app">
     <nav class="tabBar" role="tablist" aria-label="Sections">
+      <span class="brand" aria-hidden="true">maia<b>.</b>3</span>
       <button class="tabBtn active" id="tabBtnPlay" data-tab="play" role="tab">
         <span class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 12h18M12 3v18"/></svg></span>
         <span class="tabLabel">Play</span>
@@ -20,6 +21,10 @@
         <span class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="M20 20l-4.2-4.2"/></svg></span>
         <span class="tabLabel">Review</span>
       </button>
+      <button type="button" class="practiceTab" id="tabBtnPractice">
+        <span class="tabLabel">Practice</span>
+      </button>
+      <span class="navStatus" id="navStatus"></span>
       <button type="button" class="aboutBtn aboutOpen" aria-label="Settings and about">
         <span class="tabIcon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></span>
         <span class="tabLabel">Settings</span>
@@ -75,20 +80,12 @@
       <aside id="playSide" class="side">
         <div class="panel sheet" id="setup-panel" role="dialog" aria-modal="true" aria-labelledby="setup-title">
           <div class="sheetHead">
-            <div>
-              <h2 id="setup-title">New game</h2>
-              <p class="sheetSub">Play a human-like opponent at the strength you choose.</p>
+            <div class="heroAvatar" aria-hidden="true">m&middot;3</div>
+            <div class="sheetTitle">
+              <h2 id="setup-title">Choose your opponent</h2>
+              <p class="sheetSub">Plays like a human, not an engine.</p>
             </div>
             <button type="button" class="sheetClose" id="setup-close" aria-label="Close">&#10005;</button>
-          </div>
-
-          <div class="field">
-            <span class="fieldLabel">Play as</span>
-            <div class="segmented" id="side-select" role="radiogroup" aria-label="Play as">
-              <button type="button" role="radio" data-value="white" aria-checked="false">White</button>
-              <button type="button" role="radio" data-value="random" aria-checked="true" class="active">Random</button>
-              <button type="button" role="radio" data-value="black" aria-checked="false">Black</button>
-            </div>
           </div>
 
           <div class="field" id="elo-field">
@@ -97,19 +94,38 @@
               <span id="active-model-name" title="Maia-3 model in use">Checking…</span>
               <select id="model-select" hidden title="Maia-3 model"></select>
             </div>
+            <div class="eloRow"><b id="elo-value">1500</b><span class="eloUnit">Elo</span></div>
+            <input type="range" id="elo-slider" min="600" max="2600" step="50" value="1500" />
             <div class="presets" id="elo-presets" role="group" aria-label="Strength presets"></div>
-            <div class="eloRow"><span><b id="elo-value">1500</b> Elo &middot; <span id="elo-level" class="eloLevel"></span></span></div>
-            <input type="range" id="elo-slider" min="600" max="2600" step="50" value="1500" aria-describedby="elo-hint" />
-            <p class="hint" id="elo-hint">Elo is a chess rating. Maia plays like a typical player at this level, mistakes included.</p>
             <p class="hint" id="no-model-hint" style="display:none;">This build has no Maia-3 model bundled.</p>
+          </div>
+
+          <div class="field">
+            <span class="fieldLabel">Play as</span>
+            <div class="segmented" id="side-select" role="radiogroup" aria-label="Play as">
+              <button type="button" role="radio" data-value="white" aria-checked="false" aria-label="White" title="White">White</button>
+              <button type="button" role="radio" data-value="random" aria-checked="true" class="active" aria-label="Random" title="Random">Random</button>
+              <button type="button" role="radio" data-value="black" aria-checked="false" aria-label="Black" title="Black">Black</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span class="fieldLabel">Time</span>
+            <div class="chips" id="time-select" role="radiogroup" aria-label="Time control">
+              <button type="button" role="radio" data-base="0" data-inc="0" aria-checked="false">None</button>
+              <button type="button" role="radio" data-base="5" data-inc="0" aria-checked="false">5+0</button>
+              <button type="button" role="radio" data-base="10" data-inc="0" aria-checked="true" class="active">10+0</button>
+              <button type="button" role="radio" data-base="15" data-inc="10" aria-checked="false">15+10</button>
+            </div>
           </div>
 
           <p class="sheetError" id="sheet-error" role="alert" hidden></p>
           <p class="hint sheetNote" id="sheet-note" hidden>A game is in progress. Strength changes apply to it right away; starting a new game abandons it.</p>
           <button id="start-btn" class="primary" title="Shortcut: N">Start game</button>
+          <button type="button" class="linkBtn" id="import-link">Import PGN to review &#9656;</button>
 
           <details id="advanced-settings">
-            <summary id="advanced-summary">Advanced</summary>
+            <summary id="advanced-summary">Engine settings &middot; temperature, top-p, FEN</summary>
 
             <div class="settingRow">
               <div class="settingHead">
@@ -147,7 +163,7 @@
         </div>
 
         <div class="oppCard" id="oppCard">
-          <div class="oppAvatar" aria-hidden="true">M</div>
+          <div class="oppAvatar" aria-hidden="true">m&middot;3</div>
           <div class="oppInfo"><b id="oppName">Maia</b><span id="oppSub"></span></div>
           <span class="oppState" id="oppState"></span>
         </div>
@@ -162,11 +178,11 @@
             <button type="button" id="moves-toggle" class="movesToggle" aria-expanded="false" aria-label="Show all moves"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
           </div>
           <div class="actions">
-            <button class="small" id="new-game-btn">New game</button>
             <button class="small" id="undo-btn" title="Undo (U)">Undo</button>
             <button class="small danger" id="resign-btn">Resign</button>
-            <button class="small" id="analyze-this-btn" title="Open this game in Review">Review</button>
-            <button class="small" id="copy-pgn-btn">Copy PGN</button>
+            <button class="small" id="copy-pgn-btn">PGN</button>
+            <button class="primary" id="analyze-this-btn" title="Open this game in Review">Review game</button>
+            <button class="small" id="new-game-btn">New game</button>
           </div>
         </div>
       </aside>
@@ -176,7 +192,7 @@
       <section id="analyze-board-wrap" class="boardCol">
         <div id="analyzeStatus" class="statusLine" role="status">Open a recent game or paste a PGN.</div>
         <div class="materialBar" id="aMaterialTop"></div>
-        <div class="boardFrame"><div id="analyzeBoard" aria-label="analysis board"></div>
+        <div class="boardFrame"><div class="evalBar" id="evalBar" aria-hidden="true"><b id="evalBarFill"></b></div><div id="analyzeBoard" aria-label="analysis board"></div>
           <div class="boardOverlay" id="reviewEmpty" hidden>
             <div class="overlayCard">
               <h3>Review a game</h3>
@@ -220,6 +236,11 @@
           <button class="small" id="practiceResumeBtn">Back to practice</button>
         </div>
 
+        <div class="importHead" id="importHead">
+          <h2>Review a game</h2>
+          <p>Stockfish grades every move and finds your mistakes.</p>
+        </div>
+
         <ol class="stepper" id="reviewSteps" aria-label="Review progress">
           <li data-step="1" class="current"><i>1</i>Load</li>
           <li data-step="2"><i>2</i>Analyze</li>
@@ -239,7 +260,9 @@
 
         <div class="panel collapsible paneMoves" id="loadPanel">
           <h2>Load a game</h2>
-          <textarea id="pgnInput" rows="3" placeholder="Paste a PGN, or plain moves like 1. e4 e5 2. Nf3 Nc6"></textarea>
+          <label class="drop" id="pgnDrop"><input type="file" id="pgnFile" accept=".pgn,.txt,text/plain" hidden /><b>Drop a .pgn file here</b><span>or <u>choose a file</u></span></label>
+          <div class="orLine">or paste</div>
+          <textarea id="pgnInput" rows="3" placeholder="[Event &quot;Casual game&quot;]&#10;1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 ..."></textarea>
           <div class="inlineRow">
             <button id="pasteBtn" class="small" type="button">Paste from clipboard</button>
             <button id="loadGameBtn" class="primary">Load &amp; analyze</button>
@@ -249,24 +272,29 @@
 
         <div class="panel collapsible paneMoves" id="analyzeControlsPanel">
           <h2>Analysis settings</h2>
-          <div class="pairRow">
-            <label>Grade
-              <select id="analyzeSideSelect">
-                <option value="both" selected>Both sides</option>
-                <option value="white">White only</option>
-                <option value="black">Black only</option>
-              </select>
-            </label>
-            <label>Depth
-              <select id="analyzeDepthSelect">
-                <option value="10">10 · fast</option>
-                <option value="14" selected>14 · balanced</option>
-                <option value="18">18 · thorough</option>
-              </select>
-            </label>
+          <div class="setRow"><span>Search depth</span><b id="depthVal">14</b></div>
+          <input type="range" id="analyzeDepthSelect" min="8" max="24" step="1" value="14" />
+          <div class="setRow"><span>Lines per move <small>(more = slower)</small></span>
+            <div class="chips" id="lineChips" role="group" aria-label="Lines per move">
+              <button type="button" data-lines="1">1</button><button type="button" data-lines="2">2</button><button type="button" data-lines="3" class="active">3</button>
+            </div>
           </div>
+          <div class="setRow"><span>Max time per search</span>
+            <div class="chips" id="capChips" role="group" aria-label="Max time per search">
+              <button type="button" data-cap="2">2s</button><button type="button" data-cap="5" class="active">5s</button><button type="button" data-cap="10">10s</button><button type="button" data-cap="0">None</button>
+            </div>
+          </div>
+          <div class="setRow">
+            <label for="analyzeSideSelect">Grade</label>
+            <select id="analyzeSideSelect">
+              <option value="both" selected>Both sides</option>
+              <option value="white">White only</option>
+              <option value="black">Black only</option>
+            </select>
+          </div>
+          <div class="est" id="analyzeEst"></div>
           <button id="analyzeGameBtn" class="primary" disabled>Analyze game</button>
-          <p class="hint">Higher depth finds subtler mistakes but takes longer.</p>
+          <p class="hint analyzeNote">Results appear move by move. You can stop at any time and keep what's done. The engine runs on your CPU, nothing is uploaded.</p>
         </div>
 
         <div class="panel paneMoves folded" id="evalGraphBox" style="display:none;">
@@ -281,12 +309,12 @@
         </div>
 
         <div class="panel paneMoves" id="accuracyPanel" style="display:none;">
-          <h2>Accuracy</h2>
-          <div id="accuracyBody"></div>
+          <div class="statTiles" id="accTiles"></div>
+          <details class="accDetails"><summary>Accuracy by phase</summary><div id="accuracyBody"></div></details>
         </div>
 
         <div class="panel listCollapsed paneMoves" id="flaggedPanel" style="display:none;">
-          <h2 id="flaggedHeading"><span>Mistakes <span id="flaggedCount" class="hint"></span></span></h2>
+          <h2 id="flaggedHeading"><span>Key moments <span id="flaggedCount" class="hint"></span></span></h2>
           <div id="flaggedList"></div>
           <div class="inlineRow" id="practiceSideRow" style="display:none;">
             <label for="practiceSideSelect">Practice</label>
@@ -298,6 +326,7 @@
           </div>
           <button id="practiceBtn" class="primary" style="display:none;">Practice my mistakes →</button>
         </div>
+        <button type="button" class="linkBtn" id="importAnotherBtn">Import another PGN</button>
 
         <div class="panel paneMoves movesPanel" id="moveListPanel" style="display:none;">
           <div class="moveBar">
