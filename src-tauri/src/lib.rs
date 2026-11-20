@@ -559,6 +559,7 @@ pub fn run() {
     }
     tauri::Builder::default()
         .plugin(logger.build())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState {
             game: Mutex::new(Game::new()),
             generation: AtomicU64::new(0),

@@ -700,7 +700,7 @@ function sanHistoryToPgn(sanHistory, fenForHeader, result) {
 async function copyPgn() {
   const pgn = sanHistoryToPgn(state.sanHistory, startFen, gameResult(state));
   try {
-    await navigator.clipboard.writeText(pgn);
+    await clip.write(pgn);
     const original = els.copyPgnBtn.textContent;
     els.copyPgnBtn.textContent = "Copied!";
     setTimeout(() => { els.copyPgnBtn.textContent = original; }, 1200);

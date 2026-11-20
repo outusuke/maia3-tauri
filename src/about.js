@@ -61,7 +61,7 @@ document.addEventListener("keydown", (e) => {
 
 aboutCopy.addEventListener("click", async () => {
   try {
-    await navigator.clipboard.writeText(ABOUT_REPO);
+    await clip.write(ABOUT_REPO);
     aboutCopy.textContent = "Copied!";
     setTimeout(() => { aboutCopy.textContent = "Copy link"; }, 1200);
   } catch {}

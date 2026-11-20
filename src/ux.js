@@ -243,7 +243,7 @@
   $("pasteBtn").addEventListener("click", async () => {
     az.loadError.textContent = "";
     try {
-      const t = (await navigator.clipboard.readText()).trim();
+      const t = (await clip.read()).trim();
       if (!t) { az.loadError.textContent = "The clipboard is empty."; return; }
       az.pgnInput.value = t;
       az.pgnInput.focus();
@@ -251,6 +251,23 @@
       az.pgnInput.focus();
       az.loadError.textContent = "Couldn't read the clipboard. Click the box and press Ctrl+V (⌘V on Mac).";
     }
+  });
+  $("clearPgnBtn").addEventListener("click", () => {
+    az.pgnInput.value = "";
+    az.loadError.textContent = "";
+    az.pgnInput.focus();
+  });
+  // Ctrl+V anywhere on Review (outside a field) reopens the Load panel with the text in it
+  document.addEventListener("paste", (e) => {
+    if (document.body.dataset.tab !== "analyze") return;
+    if (e.target.closest("input, textarea, select, [contenteditable]")) return;
+    const t = (e.clipboardData?.getData("text") || "").trim();
+    if (!t) return;
+    e.preventDefault();
+    az.loadPanel.classList.remove("collapsed");
+    az.pgnInput.value = t;
+    az.loadError.textContent = "";
+    az.pgnInput.focus();
   });
   az.pgnInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); az.loadBtn.click(); }

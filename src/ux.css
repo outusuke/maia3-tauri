@@ -66,8 +66,8 @@ body.noGame #moves-panel > .actions > :not(#new-game-btn) { display: none; }
 .stepper li.done { color: var(--text); }
 .stepper li.done i { background: rgba(111, 208, 140, .2); border-color: #6fd08c; color: #6fd08c; font-size: 0; }
 .stepper li.done i::after { content: "✓"; font-size: 12px; }
-#loadPanel .inlineRow { gap: 8px; }
-#loadPanel .inlineRow .primary { flex: 1; width: auto; }
+#loadPanel .inlineRow { gap: 8px; flex-wrap: wrap; }
+#loadPanel .inlineRow .primary { flex: 1 1 120px; width: auto; }
 #loadPanel .inlineRow .small { flex: none; min-height: 46px; }
 
 /* analysis settings only matter once a game is loaded */
@@ -380,3 +380,7 @@ body.noGame .sheetClose { display: none; }
   :root[data-theme="minimal"] #analyzeTab:not(.hasGame) #loadPanel .inlineRow { justify-content: flex-end; }
   :root[data-theme="minimal"] #analyzeTab:not(.hasGame) #recentPanel > h2::after { content: none; }
 }
+
+/* once a game is open, Load a game stays right under the tabs (folded to one line), so no scrolling to paste */
+#analyzeTab.hasGame #loadPanel,
+#analyzeTab.analyzed #loadPanel { order: -1 !important; }
