@@ -8,6 +8,7 @@ const els = {
   resignBtn: document.getElementById("resign-btn"),
   analyzeThisBtn: document.getElementById("analyze-this-btn"),
   sideSelect: document.getElementById("side-select"),
+  timeSelect: document.getElementById("time-select"),
   activeModelName: document.getElementById("active-model-name"),
   noModelHint: document.getElementById("no-model-hint"),
   modelSelect: document.getElementById("model-select"),
@@ -140,6 +141,8 @@ document.addEventListener("keydown", (e) => {
   if (!document.getElementById("playTab").classList.contains("active")) return;
   if (document.getElementById("setup-overlay").classList.contains("show")) return;
   if (e.target.closest && e.target.closest("input, textarea, select, summary")) return;
+  // while the New game dialog is open only N (and Esc, handled elsewhere) apply
+  if (!els.setupPanel.classList.contains("collapsed") && e.key.toLowerCase() !== "n") return;
 
   const navTargets = { ArrowLeft: viewPly - 1, ArrowRight: viewPly + 1, Home: 0, End: posHistory.length - 1 };
   if (e.key in navTargets) {
@@ -154,14 +157,80 @@ document.addEventListener("keydown", (e) => {
   } else if (key === "u" && !els.undoBtn.disabled) {
     e.preventDefault();
     els.undoBtn.click();
-  } else if (key === "n" && !els.startBtn.disabled) {
+  } else if (key === "n") {
     e.preventDefault();
-    els.startBtn.click();
+    if (els.setupPanel.classList.contains("collapsed")) els.setupPanel.classList.remove("collapsed");
+    else if (!els.startBtn.disabled) els.startBtn.click();
   }
 });
 
 function selectedSide() {
   return els.sideSelect.querySelector("button.active").dataset.value;
+}
+
+els.timeSelect.addEventListener("click", (e) => {
+  const btn = e.target.closest("button[data-base]");
+  if (!btn) return;
+  els.timeSelect.querySelectorAll("button").forEach((b) => {
+    b.classList.toggle("active", b === btn);
+    b.setAttribute("aria-checked", String(b === btn));
+  });
+});
+
+// null while untimed. Times are in ms; `last` is when the side to move started its turn.
+let clock = null;
+let clockTimer = null;
+
+function clockText(ms) {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function clockLeft(color) {
+  if (!clock) return 0;
+  const running = color === clock.turn && gameStarted && !isGameOver();
+  return clock[color] - (running ? Date.now() - clock.last : 0);
+}
+
+function renderClocks() {
+  document.querySelectorAll("#playTab .clk").forEach((el) => {
+    const color = el.dataset.side;
+    el.textContent = clock ? clockText(clockLeft(color)) : "";
+    el.classList.toggle("on", !!clock && color === clock.turn && gameStarted && !isGameOver());
+    el.classList.toggle("low", !!clock && clockLeft(color) < 20000);
+  });
+}
+
+function startClock() {
+  clearInterval(clockTimer);
+  const b = els.timeSelect.querySelector("button.active");
+  const base = Number(b.dataset.base) * 60000;
+  clock = base ? { white: base, black: base, inc: Number(b.dataset.inc) * 1000, turn: state.turn, last: Date.now() } : null;
+  if (clock) clockTimer = setInterval(tickClock, 200);
+  renderClocks();
+}
+
+// Hands the clock to whoever is on move now; the mover who just played gets the increment.
+function syncClockTurn(withIncrement = true) {
+  if (!clock || clock.turn === state.turn) return;
+  const now = Date.now();
+  clock[clock.turn] += (withIncrement ? clock.inc : 0) - (now - clock.last);
+  clock.turn = state.turn;
+  clock.last = now;
+}
+
+async function tickClock() {
+  if (!clock || !gameStarted || isGameOver()) { clearInterval(clockTimer); renderClocks(); return; }
+  if (clockLeft(clock.turn) > 0) { renderClocks(); return; }
+  clock[clock.turn] = 0;
+  clock.last = Date.now();
+  state = { ...state, status: "timeout", winner: clock.turn === "white" ? "black" : "white" };
+  gameStarted = false;
+  clearInterval(clockTimer);
+  await invoke("stop_engine").catch(() => {});
+  renderPlayBoard();
+  renderMoveList();
+  setStatus(statusBanner());
 }
 
 els.sideSelect.addEventListener("click", (e) => {
@@ -174,10 +243,9 @@ els.sideSelect.addEventListener("click", (e) => {
 });
 
 function updateAdvancedSummary() {
-  els.advancedSummary.textContent = els.startFenInput.value.trim() ? "Advanced · custom position" : "Advanced";
+  els.advancedSummary.textContent = els.startFenInput.value.trim() ? "Engine settings · custom position" : "Engine settings · temperature, top-p, FEN";
 }
 els.startFenInput.addEventListener("input", updateAdvancedSummary);
-els.setupPanel.querySelector("h2").addEventListener("click", () => els.setupPanel.classList.toggle("collapsed"));
 els.analyzeThisBtn.addEventListener("click", sendGameToAnalyze);
 
 function hideFenError() { els.fenError.style.display = "none"; els.fenError.textContent = ""; }
@@ -294,6 +362,7 @@ async function startGame() {
     gameStarted = true;
     selected = null;
     legalTargets = [];
+    startClock();
     els.setupPanel.classList.add("collapsed");
     renderPlayBoard();
     renderMoveList();
@@ -321,7 +390,7 @@ async function resign() {
 }
 
 function isGameOver() {
-  return ["checkmate", "stalemate", "draw", "resigned"].includes(state.status);
+  return ["checkmate", "stalemate", "draw", "resigned", "timeout"].includes(state.status);
 }
 
 function setStatus(text) { els.status.textContent = text; }
@@ -333,7 +402,10 @@ function statusBanner() {
     case "stalemate": return "Draw by stalemate.";
     case "draw": return "Draw.";
     case "resigned": return "You resigned.";
-    default: return state.turn === playerColor ? "Your move." : "Maia-3 is thinking…";
+    case "timeout": return `Time out — ${state.winner === playerColor ? "you win!" : "Maia-3 wins."}`;
+    default:
+      if (state.turn !== playerColor) return "Maia-3 is thinking…";
+      return posHistory.length <= 1 ? "Your move — drag a piece, or tap it and then a square." : "Your move.";
   }
 }
 
@@ -343,7 +415,10 @@ async function triggerEngineMove() {
   updateControls();
   setStatus("Maia-3 is thinking…");
   try {
-    state = await invoke("engine_move");
+    const reply = await invoke("engine_move");
+    if (state.status === "timeout") return; // the clock ran out while Maia was thinking
+    state = reply;
+    syncClockTurn();
     posHistory.push({ fen: state.fen, lastMove: state.lastMove });
     viewPly = posHistory.length - 1;
     renderPlayBoard();
@@ -369,6 +444,7 @@ async function attemptMove(from, to) {
 
   try {
     state = await invoke("make_move", { from, to, promotion });
+    syncClockTurn();
     posHistory.push({ fen: state.fen, lastMove: state.lastMove });
     viewPly = posHistory.length - 1;
     clearSelection();
@@ -404,7 +480,6 @@ function updateControls() {
   if (isGameOver()) {
     if (!gameOverHandled) {
       saveRecentGame();
-      els.setupPanel.classList.remove("collapsed");
     }
     gameOverHandled = true;
   } else {
@@ -431,6 +506,7 @@ function renderPlayBoard() {
   const checkSquare = (viewingLive && state.inCheck) ? findKingInCheckSquare(board, sideToMove(fen)) : null;
 
   renderMaterialBars(els.materialTop, els.materialBottom, fen, flipped);
+  renderClocks();
   renderChessBoard(els.board, fen, {
     flipped,
     selected: viewingLive ? selected : null,
@@ -511,12 +587,12 @@ function movePairs(sans, fen) {
 }
 
 function gameResult(st) {
-  if (st.status === "checkmate" || st.status === "resigned") return st.winner === "white" ? "1-0" : "0-1";
+  if (st.status === "checkmate" || st.status === "resigned" || st.status === "timeout") return st.winner === "white" ? "1-0" : "0-1";
   if (st.status === "stalemate" || st.status === "draw") return "1/2-1/2";
   return null;
 }
 
-const RESULT_REASON = { checkmate: "checkmate", resigned: "resignation", stalemate: "stalemate", draw: "draw" };
+const RESULT_REASON = { checkmate: "checkmate", resigned: "resignation", timeout: "on time", stalemate: "stalemate", draw: "draw" };
 
 function renderMoveList() {
   const list = els.moveList;
@@ -525,7 +601,7 @@ function renderMoveList() {
   if (history.length === 0) {
     const empty = document.createElement("li");
     empty.className = "move-empty";
-    empty.textContent = "No moves yet.";
+    empty.textContent = "Moves will appear here as you play.";
     list.appendChild(empty);
     return;
   }
@@ -597,6 +673,7 @@ async function doUndo() {
     if (state.turn === playerColor) break;
   }
   if (removed === 0) return;
+  syncClockTurn(false);
   viewPly = posHistory.length - 1;
   clearSelection();
   renderPlayBoard();
@@ -623,7 +700,7 @@ function sanHistoryToPgn(sanHistory, fenForHeader, result) {
 async function copyPgn() {
   const pgn = sanHistoryToPgn(state.sanHistory, startFen, gameResult(state));
   try {
-    await navigator.clipboard.writeText(pgn);
+    await clip.write(pgn);
     const original = els.copyPgnBtn.textContent;
     els.copyPgnBtn.textContent = "Copied!";
     setTimeout(() => { els.copyPgnBtn.textContent = original; }, 1200);

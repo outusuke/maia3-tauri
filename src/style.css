@@ -269,12 +269,10 @@ button.small.wide { width: 100%; }
 #analyzeTab.hasGame #recentPanel { order: 9; }
 #analyzeTab.hasGame #loadPanel { order: 10; }
 #variationBar { order: -2; }
-.paneTabs { order: -1; }
-#analyzeTab:not(.hasGame) .paneTabs,
+.paneTabs { display: none !important; }
 #analyzeTab:not(.hasGame) .paneEngine { display: none !important; }
-#analyzeTab:not(.practicing)[data-pane="engine"] .paneMoves { display: none !important; }
-#analyzeTab:not(.practicing)[data-pane="moves"] .paneEngine { display: none !important; }
-#analyzeTab.practicing .paneTabs,
+#analyzeTab:not(.practicing) #flaggedPanel { display: none !important; }
+#analyzeTab.hasGame .paneEngine { order: 3; }
 #analyzeTab.practicing .paneMoves:not(#evalGraphBox) { display: none !important; }
 #analyzeTab.practicing #puzzlePanelV2 { order: -1; }
 

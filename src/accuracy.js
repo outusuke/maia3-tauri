@@ -139,6 +139,24 @@ function computeAccuracy(moves) {
   return out;
 }
 
+function renderAccuracyTiles(stats, sides) {
+  const mine = loadedGame && loadedGame.myColor;
+  const order = mine && sides.includes(mine) ? [mine, ...sides.filter((s) => s !== mine)] : sides;
+  const tiles = document.getElementById("accTiles");
+  tiles.textContent = "";
+  order.forEach((side, i) => {
+    const v = stats[side].overall;
+    const tile = document.createElement("div");
+    tile.className = "statTile" + (mine && i > 0 ? " dim" : "");
+    const num = document.createElement("b");
+    num.textContent = v === null ? "–" : `${Math.round(v)}%`;
+    const label = document.createElement("span");
+    label.textContent = mine ? (i === 0 ? "Your accuracy" : `Maia ${els.eloSlider.value}`) : (side === "white" ? "White" : "Black");
+    tile.append(num, label);
+    tiles.appendChild(tile);
+  });
+}
+
 function renderAccuracy() {
   const sel = az.sideSelect.value;
   if (!analysis || analysis.length === 0) {
@@ -147,6 +165,7 @@ function renderAccuracy() {
   }
   const stats = computeAccuracy(analysis);
   const sides = sel === "both" ? ["white", "black"] : [sel];
+  renderAccuracyTiles(stats, sides);
   const body = az.accuracyBody;
   body.innerHTML = "";
   body.style.gridTemplateColumns = `1fr repeat(${sides.length}, 64px)`;

@@ -459,6 +459,7 @@ fn analyze_moves(
     start_fen: Option<String>,
     depth: Option<u32>,
     multipv: Option<u32>,
+    move_time_secs: Option<u64>,
 ) -> Result<Vec<MoveAnalysis>, String> {
     check_len("moves", sans.len(), MAX_PLIES)?;
     let parsed = pgn::parse_sans(&sans, start_fen.as_deref())?;
@@ -471,6 +472,10 @@ fn analyze_moves(
     }
     if let Some(mpv) = multipv {
         config.multipv = mpv.clamp(1, MAX_MULTIPV);
+    }
+    if let Some(secs) = move_time_secs {
+        // 0 means "no cap"; Stockfish still stops at the requested depth
+        config.move_timeout = Duration::from_secs(if secs == 0 { 3600 } else { secs.min(3600) });
     }
 
     log::info!(
@@ -499,6 +504,31 @@ fn analyze_moves(
 fn cancel_analysis(state: State<AppState>) {
     log::info!("[analysis] cancel requested");
     state.analysis_cancel.store(true, Ordering::SeqCst);
+}
+
+// arboard can't read the clipboard on GNOME Wayland (Mutter lacks data-control)
+#[tauri::command(async)]
+fn read_clipboard_fallback() -> Result<String, String> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::{Command, Stdio};
+        let attempts: [(&str, &[&str]); 3] = [
+            ("wl-paste", &["--no-newline"]),
+            ("xclip", &["-selection", "clipboard", "-o"]),
+            ("xsel", &["--clipboard", "--output"]),
+        ];
+        for (bin, args) in attempts {
+            let out = Command::new(bin).args(args).stderr(Stdio::null()).output();
+            if let Ok(o) = out {
+                if o.status.success() {
+                    return Ok(String::from_utf8_lossy(&o.stdout).into_owned());
+                }
+            }
+        }
+        Err("no clipboard tool found (install wl-clipboard or xclip)".into())
+    }
+    #[cfg(not(target_os = "linux"))]
+    Err("not supported on this platform".into())
 }
 
 #[tauri::command]
@@ -554,6 +584,7 @@ pub fn run() {
     }
     tauri::Builder::default()
         .plugin(logger.build())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .manage(AppState {
             game: Mutex::new(Game::new()),
             generation: AtomicU64::new(0),
@@ -626,6 +657,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            read_clipboard_fallback,
             new_game,
             legal_targets,
             make_move,

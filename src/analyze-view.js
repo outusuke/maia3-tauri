@@ -617,7 +617,8 @@ az.analyzeBtn.addEventListener("click", async () => {
       sans: loadedGame.sans,
       startFen: loadedGame.startFen,
       depth: analysisDepthUsed,
-      multipv: 5,
+      multipv: analyzeOpts.lines,
+      moveTimeSecs: analyzeOpts.capSecs,
     });
     analysisDepth = analysisDepthUsed;
     cacheAnalysis(loadedGame, analysis, analysisDepthUsed);
@@ -749,9 +750,11 @@ function renderFlaggedList() {
     tag.className = `sideTag ${mover}`;
     tag.textContent = mover === "white" ? "White" : "Black";
     const moveText = document.createElement("span");
-    moveText.className = gradeClass(m.grade);
-    moveText.textContent = `${label} ${m.san} (${m.grade})`;
-    head.append(tag, " ", moveText);
+    moveText.textContent = `${label} ${m.san}`;
+    const pill = document.createElement("span");
+    pill.className = `pill ${gradeClass(m.grade)}`;
+    pill.textContent = m.grade[0].toUpperCase() + m.grade.slice(1);
+    head.append(tag, " ", moveText, pill);
     div.appendChild(head);
 
     const better = document.createElement("div");
@@ -800,7 +803,7 @@ function updatePracticeControls() {
   az.practiceBtn.style.display = "inline-block";
   az.practiceBtn.disabled = puzzles.length === 0;
   az.practiceBtn.textContent = puzzles.length > 0
-    ? `Practice My Mistakes (${puzzles.length}) →` : "No mistakes for this side";
+    ? `Practice ${puzzles.length} mistake${puzzles.length === 1 ? "" : "s"}` : "No mistakes for this side";
 }
 az.practiceSideSelect.addEventListener("change", () => {
   updatePracticeControls();

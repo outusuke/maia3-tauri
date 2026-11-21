@@ -5,7 +5,9 @@ usage: fetch_assets.py [--ort] [--stockfish] [--models ID ...]   (no flags = all
 Models come from the "models" release; gh needs GH_TOKEN, set automatically in Actions.
 """
 import argparse
+import hashlib
 import io
+import json
 import os
 import pathlib
 import platform
@@ -44,29 +46,29 @@ def fetch_ort() -> None:
     arm = machine in ("arm64", "aarch64")
     system = platform.system()
     if system == "Windows":
-        name, ext = f"onnxruntime-win-{'arm64' if arm else 'x64'}-{ORT_VERSION}", "zip"
+        tag, libs = ("win_arm64" if arm else "win_amd64"), ("onnxruntime.dll", "onnxruntime_providers_shared.dll")
     elif system == "Linux":
-        name, ext = f"onnxruntime-linux-{'aarch64' if arm else 'x64'}-{ORT_VERSION}", "tgz"
+        tag, libs = ("manylinux_2_28_aarch64" if arm else "manylinux_2_28_x86_64"), ("libonnxruntime.so.",)
     else:
         sys.exit(f"no ONNX Runtime package wired up for {system}")
 
-    data = get(f"https://github.com/microsoft/onnxruntime/releases/download/v{ORT_VERSION}/{name}.{ext}")
+    # GitHub release assets for 1.31.0 are gone; the PyPI wheel carries the same shared library
+    meta = json.loads(get(f"https://pypi.org/pypi/onnxruntime/{ORT_VERSION}/json"))
+    wheel = next((u for u in meta["urls"] if u["filename"].endswith(f"-cp312-cp312-{tag}.whl")), None)
+    if wheel is None:
+        sys.exit(f"no onnxruntime {ORT_VERSION} cp312 wheel for {tag} on PyPI")
+    data = get(wheel["url"])
+    if hashlib.sha256(data).hexdigest() != wheel["digests"]["sha256"]:
+        sys.exit(f"checksum mismatch for {wheel['filename']}")
+
     clear(ORT_DIR)
-    if ext == "zip":
-        with zipfile.ZipFile(io.BytesIO(data)) as z:
-            for member in z.namelist():
-                base = pathlib.PurePosixPath(member).name
-                if "/lib/" in member and base in ("onnxruntime.dll", "onnxruntime_providers_shared.dll"):
-                    (ORT_DIR / base).write_bytes(z.read(member))
-    else:
-        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as t:
-            for member in t.getmembers():
-                base = pathlib.PurePosixPath(member.name).name
-                # the symlinks point at this real file, so skip them
-                if member.isfile() and base.startswith("libonnxruntime.so"):
-                    (ORT_DIR / base).write_bytes(t.extractfile(member).read())
+    with zipfile.ZipFile(io.BytesIO(data)) as z:
+        for member in z.namelist():
+            base = pathlib.PurePosixPath(member).name
+            if member.startswith("onnxruntime/capi/") and base.startswith(libs):
+                (ORT_DIR / base).write_bytes(z.read(member))
     if not any(f.name.startswith(("onnxruntime.dll", "libonnxruntime.so")) for f in ORT_DIR.iterdir()):
-        sys.exit(f"no ONNX Runtime library found in {name}.{ext}")
+        sys.exit(f"no ONNX Runtime library found in {wheel['filename']}")
     print("ORT:", sorted(f.name for f in ORT_DIR.iterdir()))
 
 
