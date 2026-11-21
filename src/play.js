@@ -218,7 +218,7 @@ function startClock() {
   clearInterval(clockTimer);
   const b = els.timeSelect.querySelector("button.active");
   const base = Number(b.dataset.base) * 60000;
-  clock = base ? { white: base, black: base, inc: Number(b.dataset.inc) * 1000, turn: state.turn, last: Date.now() } : null;
+  clock = base ? { white: base, black: base, base, inc: Number(b.dataset.inc) * 1000, turn: state.turn, last: Date.now() } : null;
   if (clock) clockTimer = setInterval(tickClock, 200);
   renderClocks();
 }
@@ -429,7 +429,9 @@ async function triggerEngineMove() {
   updateControls();
   setStatus("Maia-3 is thinking…");
   try {
-    const reply = await invoke("engine_move");
+    const botColor = playerColor === "white" ? "black" : "white";
+    const botClock = clock && { remainingMs: Math.max(0, clockLeft(botColor)), baseMs: clock.base, incMs: clock.inc };
+    const reply = await invoke("engine_move", { clock: botClock });
     if (state.status === "timeout") return; // the clock ran out while Maia was thinking
     state = reply;
     syncClockTurn();

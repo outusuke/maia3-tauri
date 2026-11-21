@@ -10,6 +10,7 @@ mod pgn;
 #[cfg(not(target_os = "android"))]
 mod process_stockfish;
 mod sacrifice;
+mod timing;
 
 use analysis::{AnalysisConfig, MoveAnalysis};
 use chess::{Board, Piece, Square};
@@ -390,15 +391,28 @@ fn resume_engines(app: AppHandle, state: State<AppState>) -> Result<(), String> 
     revive_engine(&app, state.inner(), &mut slot)
 }
 
+// sleeps in short steps so undo, a new game or a timeout cancels the pending move
+fn wait_for_turn(pause: Duration, state: &AppState, generation: u64) -> Result<(), String> {
+    let deadline = Instant::now() + pause;
+    while let Some(left) = deadline.checked_duration_since(Instant::now()) {
+        if state.generation.load(Ordering::SeqCst) != generation {
+            return Err(STALE_MOVE.into());
+        }
+        std::thread::sleep(left.min(Duration::from_millis(50)));
+    }
+    Ok(())
+}
+
 #[tauri::command(async)]
-fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, String> {
+fn engine_move(app: AppHandle, state: State<AppState>, clock: Option<timing::ClockInfo>) -> Result<GameState, String> {
+    let started = Instant::now();
     let (start_fen, moves, generation) = {
         let game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
         let (start_fen, moves) = game.uci_history();
         (start_fen.to_string(), moves.to_vec(), state.generation.load(Ordering::SeqCst))
     };
 
-    let uci_move = {
+    let (uci_move, policy) = {
         let mut slot = state.engine.lock().unwrap_or_else(PoisonError::into_inner);
         revive_engine(&app, state.inner(), &mut slot)?;
         let ratings = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner).as_ref().map(|s| (s.elo, s.oppo_elo));
@@ -407,9 +421,22 @@ fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, Stri
             eng.set_elo(elo, oppo_elo)?;
         }
         let mv = eng.best_move(&start_fen, &moves, Duration::from_secs(30))?;
+        let policy = match (clock, ratings) {
+            (Some(_), Some((elo, _))) => eng
+                .maia_insights(&start_fen, &moves, &[elo], Duration::from_secs(10))
+                .ok()
+                .and_then(|i| i.policies.into_iter().next()),
+            _ => None,
+        };
         touch(&state.engine_last_used);
-        mv
+        (mv, policy)
     };
+
+    if let (Some(clock), Some(policy)) = (clock, policy) {
+        if let Some(pause) = timing::think_pause(&start_fen, &moves, &policy, clock) {
+            wait_for_turn(pause.saturating_sub(started.elapsed()), &state, generation)?;
+        }
+    }
 
     let gs = {
         let mut game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
