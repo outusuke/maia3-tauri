@@ -22,8 +22,8 @@ const C_LN_TC: f64 = 0.6759;
 const C_TC_INC: f64 = 0.1859;
 const OFFSET: f64 = 0.25;
 
-// 10+0 and 15+10 sit outside the fitted data, so they get the longest blitz control's pace
-const LN_TC_RANGE: (f64, f64) = (5.2, 6.05);
+// upper end is 15+10, the slowest control checked against real rapid games
+const LN_TC_RANGE: (f64, f64) = (5.2, 7.2);
 const OPENING_PLIES: usize = 12;
 const MIN_PAUSE: f64 = 0.6;
 const MAX_PAUSE: f64 = 30.0;
@@ -204,6 +204,18 @@ mod tests {
         assert!(think_pause(START, &[], &policy, untimed).is_none());
         assert!(think_pause(START, &[], &HashMap::new(), clock(100.0)).is_none());
         assert!(think_pause(START, &[], &policy, clock(100.0)).is_some());
+    }
+
+    #[test]
+    fn longer_time_controls_think_longer() {
+        let at = |base: f64, inc: f64| {
+            let c = ClockInfo { remaining_ms: base * 1000.0 * 0.5, base_ms: base * 1000.0, inc_ms: inc * 1000.0 };
+            median_ln(&quiet(24), 10f64.ln(), 0.4, c).unwrap()
+        };
+        assert!(at(180.0, 0.0) < at(300.0, 0.0));
+        assert!(at(300.0, 0.0) < at(600.0, 0.0));
+        assert!(at(600.0, 0.0) < at(900.0, 10.0));
+        assert_eq!(at(7200.0, 30.0), at(1800.0, 30.0));
     }
 
     #[test]
