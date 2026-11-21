@@ -49,8 +49,14 @@ def band_of(rating):
     return None
 
 
+EVENT = "Blitz"   # set from --events
+ONLY_TC = None    # set from --tc, e.g. {"600+0", "900+10"}
+
+
 def keep_headers(h):
-    if "Blitz" not in h.get("Event", "") or "FEN" in h:
+    if EVENT not in h.get("Event", "") or "FEN" in h:
+        return False
+    if ONLY_TC and h.get("TimeControl") not in ONLY_TC:
         return False
     if "BOT" in (h.get("WhiteTitle"), h.get("BlackTitle")):
         return False
@@ -251,9 +257,14 @@ def main():
     ap.add_argument("--pgn", help="read this local .pgn or .pgn.zst instead of downloading")
     ap.add_argument("--positions", type=int, default=6000)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--events", default="Blitz", help='keep games whose Event contains this, e.g. "Rapid"')
+    ap.add_argument("--tc", default="", help='only these time controls, comma separated, e.g. "600+0,900+10"')
     ap.add_argument("--csv", help="also write the collected samples here")
     ap.add_argument("--json", help="also write the fitted models here")
     args = ap.parse_args()
+    global EVENT, ONLY_TC
+    EVENT = args.events
+    ONLY_TC = {t.strip() for t in args.tc.split(",") if t.strip()} or None
 
     rng = random.Random(args.seed)
     quota_left = [args.positions // len(BANDS)] * len(BANDS)
