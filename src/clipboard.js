@@ -1,14 +1,13 @@
 // the webview blocks navigator.clipboard, so go through the native plugin when it's there
 const clip = {
   async read() {
-    // plugin first, then the Linux CLI fallback (GNOME/Wayland), then the webview API
     const native = window.__TAURI__?.clipboardManager;
     if (native?.readText) {
-      try { return (await native.readText()) || ""; } catch {}
+      try { const t = await native.readText(); if (t) return t; } catch {}
     }
     const invoke = window.__TAURI__?.core?.invoke;
     if (invoke) {
-      try { return (await invoke("read_clipboard_fallback")) || ""; } catch {}
+      try { const t = await invoke("read_clipboard_fallback"); if (t) return t; } catch {}
     }
     return navigator.clipboard.readText();
   },

@@ -506,8 +506,7 @@ fn cancel_analysis(state: State<AppState>) {
     state.analysis_cancel.store(true, Ordering::SeqCst);
 }
 
-/// Last-resort clipboard read for Linux desktops where the plugin's arboard backend
-/// can't talk to the compositor (GNOME/Mutter has no wlr data-control protocol).
+// arboard can't read the clipboard on GNOME Wayland (Mutter lacks data-control)
 #[tauri::command(async)]
 fn read_clipboard_fallback() -> Result<String, String> {
     #[cfg(target_os = "linux")]
