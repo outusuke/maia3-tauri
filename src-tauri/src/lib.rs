@@ -506,6 +506,32 @@ fn cancel_analysis(state: State<AppState>) {
     state.analysis_cancel.store(true, Ordering::SeqCst);
 }
 
+/// Last-resort clipboard read for Linux desktops where the plugin's arboard backend
+/// can't talk to the compositor (GNOME/Mutter has no wlr data-control protocol).
+#[tauri::command(async)]
+fn read_clipboard_fallback() -> Result<String, String> {
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::{Command, Stdio};
+        let attempts: [(&str, &[&str]); 3] = [
+            ("wl-paste", &["--no-newline"]),
+            ("xclip", &["-selection", "clipboard", "-o"]),
+            ("xsel", &["--clipboard", "--output"]),
+        ];
+        for (bin, args) in attempts {
+            let out = Command::new(bin).args(args).stderr(Stdio::null()).output();
+            if let Ok(o) = out {
+                if o.status.success() {
+                    return Ok(String::from_utf8_lossy(&o.stdout).into_owned());
+                }
+            }
+        }
+        Err("no clipboard tool found (install wl-clipboard or xclip)".into())
+    }
+    #[cfg(not(target_os = "linux"))]
+    Err("not supported on this platform".into())
+}
+
 #[tauri::command]
 fn parse_pgn(pgn_text: String) -> Result<pgn::ParsedGame, String> {
     pgn::parse_pgn(&pgn_text)
@@ -632,6 +658,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            read_clipboard_fallback,
             new_game,
             legal_targets,
             make_move,
