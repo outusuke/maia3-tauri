@@ -339,7 +339,10 @@ function hiRenderChart(rows, chartData, rating) {
 hi.enable.addEventListener("change", () => {
   if (puzzleMode) { hiSyncPuzzle(); return; }
   hiRefresh();
-  if (!hi.enable.checked) renderAnalyzeBoard();
+  if (!hi.enable.checked) {
+    renderAnalyzeBoard();
+    invoke("release_insights").catch(() => {});
+  }
 });
 hi.rating.addEventListener("change", () => { if (puzzleMode) hiSyncPuzzle(); else hiRefresh(); });
 hi.chartBox.addEventListener("toggle", () => { if (hi.chartBox.open) hiRefresh(); });

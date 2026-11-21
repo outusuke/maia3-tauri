@@ -390,7 +390,14 @@ function showEngineResult(fen, lines, depth, target, token) {
   redrawBoardForEngine();
 }
 
-eng.enable.addEventListener("change", () => { engKey = null; engRefresh(); if (!eng.enable.checked) redrawBoardForEngine(); });
+eng.enable.addEventListener("change", () => {
+  engKey = null;
+  engRefresh();
+  if (!eng.enable.checked) {
+    redrawBoardForEngine();
+    invoke("release_stockfish").catch(() => {});
+  }
+});
 eng.lines.addEventListener("change", () => { engKey = null; engRefresh(); });
 eng.arrows.addEventListener("change", redrawBoardForEngine);
 

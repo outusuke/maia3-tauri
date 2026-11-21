@@ -341,6 +341,21 @@ fn set_engine_elo(state: State<AppState>, elo: u32, oppo_elo: Option<u32>) -> Re
     Ok(())
 }
 
+// try_lock leaves a search in flight alone; the next request starts a fresh one on demand
+#[tauri::command]
+fn release_stockfish(state: State<AppState>) {
+    if let Ok(mut slot) = state.stockfish.try_lock() {
+        *slot = None;
+    }
+}
+
+#[tauri::command]
+fn release_insights(state: State<AppState>) {
+    if let Ok(mut slot) = state.insights.try_lock() {
+        *slot = None;
+    }
+}
+
 #[tauri::command]
 fn set_stockfish_options(state: State<AppState>, threads: Option<u32>, hash_mb: Option<u32>) {
     *state.stockfish_threads.lock().unwrap_or_else(PoisonError::into_inner) = threads.map(|t| t.clamp(1, 64));
@@ -703,6 +718,8 @@ pub fn run() {
             score_human_moves,
             set_engine_elo,
             set_stockfish_options,
+            release_stockfish,
+            release_insights,
             suspend_engines,
             resume_engines,
             engine_move,
