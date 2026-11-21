@@ -1,0 +1,70 @@
+name: Calibrate timing
+
+# Needs the model on the "models" release; run the Models workflow first if it is missing.
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Maia model id"
+        default: "maia3-23m"
+      positions:
+        description: "Positions to sample (split evenly over four rating bands)"
+        default: "6000"
+      month:
+        description: "Lichess dump month, YYYY-MM"
+        default: "2025-09"
+
+jobs:
+  calibrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      # fetch_assets.py wants the cp312 ONNX Runtime wheel
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri/maia-core
+
+      - name: Python dependencies
+        run: pip install chess zstandard numpy
+
+      - name: ONNX Runtime and model
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/fetch_assets.py --ort --models "${{ inputs.model }}"
+
+      - name: Build maia-uci
+        run: cargo build --release --locked --manifest-path src-tauri/maia-core/Cargo.toml --bin maia-uci
+
+      - name: Calibrate
+        run: |
+          ORT=$(ls src-tauri/resources/ort/libonnxruntime.so* | head -n 1)
+          python3 scripts/calibrate_think_time.py \
+            --maia src-tauri/maia-core/target/release/maia-uci \
+            --onnx "src-tauri/resources/models/${{ inputs.model }}.onnx" \
+            --ort "$ORT" \
+            --positions "${{ inputs.positions }}" \
+            --url "https://database.lichess.org/standard/lichess_db_standard_rated_${{ inputs.month }}.pgn.zst" \
+            --csv samples.csv --json model.json | tee calibration.txt
+
+      - name: Show the result in the run summary
+        if: always()
+        run: |
+          [ -f calibration.txt ] || exit 0
+          { echo '```'; cat calibration.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: timing-calibration
+          path: |
+            calibration.txt
+            samples.csv
+            model.json
+          if-no-files-found: ignore
