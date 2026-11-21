@@ -256,7 +256,7 @@ function engPosition() {
 }
 
 function redrawBoardForEngine() {
-  if (puzzleMode) renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  if (puzzleMode) renderPuzzleBoard(puzzleFlip());
   else renderAnalyzeBoard();
 }
 
@@ -460,7 +460,7 @@ document.addEventListener("keydown", (e) => {
     }
     return;
   }
-  if (e.key.toLowerCase() === "f" && !puzzleMode) {
+  if (e.key.toLowerCase() === "f") {
     e.preventDefault();
     az.flipBtn.click();
   }
@@ -528,10 +528,15 @@ function syncLineHighlights() {
   if (variation) setActiveChip(az.variationLine, variation.idx);
 }
 
-// Puzzle mode orients itself to the side to move, so flipping only shows once you leave it.
+// In practice, flip inverts the side-to-move orientation instead of touching the review board
 az.flipBtn.addEventListener("click", () => {
+  if (puzzleMode) {
+    puzzleFlipInvert = !puzzleFlipInvert;
+    renderPuzzleBoard(puzzleFlip());
+    return;
+  }
   azFlipped = !azFlipped;
-  if (!puzzleMode) renderAnalyzeBoard();
+  renderAnalyzeBoard();
 });
 
 function orientAnalyzeBoardForSide() {

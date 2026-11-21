@@ -1,4 +1,7 @@
 let puzzleMode = false;
+// Flip button inverts the auto orientation for the rest of the run
+let puzzleFlipInvert = false;
+function puzzleFlip() { return (sideToMove(puzzleFen) === "black") !== puzzleFlipInvert; }
 let puzzleIndex = 0;
 let puzzleHomeIndex = 0;
 let puzzleSolved = 0;
@@ -46,7 +49,7 @@ function resetPuzzleLine() {
   puzzleSelected = null;
   puzzleLegalTargets = [];
   refreshPuzzleChips();
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
 }
 
 function refreshPuzzleChips() {
@@ -54,7 +57,7 @@ function refreshPuzzleChips() {
   if (!moves || !puzzleExp) return;
   renderLineChips(moves, { fenBefore: puzzleFen, bestLineSan: puzzleExp.sans }, (n) => {
     puzzleViewIdx = n;
-    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+    renderPuzzleBoard(puzzleFlip());
   });
   setActiveChip(moves, puzzleViewIdx);
   const reset = az.puzzleFeedback.querySelector(".puzzleReset");
@@ -70,7 +73,7 @@ function playPuzzleFreeMove(mv) {
   }
   puzzleViewIdx = i + 1;
   refreshPuzzleChips();
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
 }
 
 function startPuzzleEngineLine(line, n) {
@@ -80,7 +83,7 @@ function startPuzzleEngineLine(line, n) {
   e.sans = e.sans.slice(0, i).concat(line.sans);
   puzzleViewIdx = i + n;
   refreshPuzzleChips();
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
 }
 
 function isAcceptable(puzzle, uci) {
@@ -94,6 +97,7 @@ function enterPuzzleMode() {
   if (puzzles.length === 0) return;
   clearPracticePause();
   puzzleMode = true;
+  puzzleFlipInvert = false;
   variation = null;
   az.variationBar.style.display = "none";
   // A refresh still running from the analysis view would repaint the board over the puzzle.
@@ -129,7 +133,7 @@ function loadPuzzle(browsing = false) {
   const mover = sideToMove(puzzleFen);
   setPuzzleProgress(`Puzzle ${puzzleIndex + 1} / ${puzzles.length} — solved ${puzzleSolved}`, puzzleIndex / puzzles.length);
   az.puzzlePrompt.innerHTML = `Find the best move for <b>${mover}</b>.`;
-  renderPuzzleBoard(mover === "black");
+  renderPuzzleBoard(puzzleFlip());
   drawEvalGraph();
 }
 
@@ -163,12 +167,12 @@ function renderPuzzleBoard(flip) {
     onDeselect: () => {
       puzzleSelected = null;
       puzzleLegalTargets = [];
-      renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+      renderPuzzleBoard(puzzleFlip());
     },
     onSquareClick: onPuzzleSquareClick,
     onDropMove: (from, to) => {
       if (puzzleSelected === from && puzzleLegalTargets.length > 0 && !puzzleLegalTargets.includes(to)) {
-        renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+        renderPuzzleBoard(puzzleFlip());
         return;
       }
       puzzleSelected = null;
@@ -198,18 +202,18 @@ async function onPuzzleSquareClick(sq) {
     if (puzzleSelected === sq) return;
     puzzleSelected = sq;
     puzzleLegalTargets = [];
-    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+    renderPuzzleBoard(puzzleFlip());
     const fenAtPress = curFen;
     let targets = [];
     try { targets = await invoke("scratch_legal_targets", { fen: curFen, square: sq }); } catch { targets = []; }
     if (puzzleSelected !== sq || puzzleCurFen() !== fenAtPress) return;
     puzzleLegalTargets = targets;
-    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+    renderPuzzleBoard(puzzleFlip());
     return;
   }
   puzzleSelected = null;
   puzzleLegalTargets = [];
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
 }
 
 async function attemptPuzzleMove(from, to) {
@@ -219,13 +223,13 @@ async function attemptPuzzleMove(from, to) {
   if (needsPromotionMove(curFen, from, to)) {
     const mover = sideToMove(curFen);
     promotion = await askPromotion(az.promo, mover === "white" ? "w" : "b");
-    if (!promotion) { renderPuzzleBoard(sideToMove(puzzleFen) === "black"); return; }
+    if (!promotion) { renderPuzzleBoard(puzzleFlip()); return; }
   }
   let result;
   try {
     result = await invoke("scratch_try_move", { fen: curFen, from, to, promotion });
   } catch {
-    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+    renderPuzzleBoard(puzzleFlip());
     return;
   }
   if (puzzleLocked) {
@@ -237,7 +241,7 @@ async function attemptPuzzleMove(from, to) {
   } else {
     az.puzzleFeedback.className = "show wrong";
     az.puzzleFeedback.textContent = "Not quite — try again.";
-    renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+    renderPuzzleBoard(puzzleFlip());
   }
 }
 
@@ -293,14 +297,14 @@ function goPuzzleLine(where) {
   else puzzleViewIdx = Math.max(0, Math.min(last, puzzleViewIdx + (where === "prev" ? -1 : 1)));
   const moves = az.puzzleFeedback.querySelector(".puzzleLine .lineMoves");
   if (moves) setActiveChip(moves, puzzleViewIdx);
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
 }
 
 function hiSyncPuzzle() {
   const stale = az.puzzleFeedback.querySelector(".puzzleHuman");
   if (stale) stale.remove();
   if (!puzzleLocked || !puzzles[puzzleIndex]) return;
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
   puzzleShowHuman(puzzles[puzzleIndex]);
 }
 
@@ -318,7 +322,7 @@ async function puzzleShowHuman(puzzle) {
   }
   if (!hi.enable.checked || !puzzleMode || !puzzleLocked || puzzles[puzzleIndex] !== puzzle || !data.moves.length) return;
 
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
 
   const previous = az.puzzleFeedback.querySelector(".puzzleHuman");
   if (previous) previous.remove();
@@ -347,7 +351,7 @@ function handlePuzzleCorrect(puzzle) {
   fillPuzzleFeedback("Correct!", puzzle);
   setPuzzleProgress(`Puzzle ${puzzleIndex + 1} / ${puzzles.length} — solved ${puzzleSolved}`, (puzzleIndex + 1) / puzzles.length);
   showPuzzleNext();
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
   puzzleShowHuman(puzzle);
 }
 
@@ -369,7 +373,7 @@ az.puzzleRevealBtn.addEventListener("click", () => {
   az.puzzleFeedback.className = "show reveal";
   fillPuzzleFeedback(`Answer: ${puzzle.bestMoveSan || "(no line available)"}`, puzzle);
   showPuzzleNext();
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
   puzzleShowHuman(puzzle);
 });
 
@@ -429,7 +433,7 @@ function resumePractice() {
   az.puzzlePanel.classList.add("show");
   document.getElementById("analyzeTab").classList.add("practicing");
   az.side.scrollTo({ top: 0, behavior: "smooth" });
-  renderPuzzleBoard(sideToMove(puzzleFen) === "black");
+  renderPuzzleBoard(puzzleFlip());
 }
 
 function clearPracticePause() {
