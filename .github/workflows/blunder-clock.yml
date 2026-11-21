@@ -1,0 +1,50 @@
+name: Blunders vs clock
+
+on:
+  workflow_dispatch:
+    inputs:
+      events:
+        description: "Game type: Blitz or Rapid"
+        default: "Blitz"
+      tc:
+        description: "Only these time controls, comma separated (blank = all)"
+        default: ""
+      games:
+        description: "Analysed games to use"
+        default: "4000"
+      month:
+        description: "Lichess dump month, YYYY-MM"
+        default: "2025-09"
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install chess zstandard
+      - name: Measure
+        run: |
+          python3 scripts/blunder_vs_clock.py \
+            --events "${{ inputs.events }}" \
+            --tc "${{ inputs.tc }}" \
+            --games "${{ inputs.games }}" \
+            --url "https://database.lichess.org/standard/lichess_db_standard_rated_${{ inputs.month }}.pgn.zst" \
+            --csv blunders.csv | tee blunders.txt
+      - if: always()
+        run: |
+          [ -f blunders.txt ] || exit 0
+          { echo '```'; cat blunders.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: blunder-clock
+          path: |
+            blunders.txt
+            blunders.csv
+          if-no-files-found: ignore
