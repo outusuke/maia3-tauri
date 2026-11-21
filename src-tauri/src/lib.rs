@@ -10,6 +10,7 @@ mod pgn;
 #[cfg(not(target_os = "android"))]
 mod process_stockfish;
 mod sacrifice;
+mod sloppiness;
 mod timing;
 
 use analysis::{AnalysisConfig, MoveAnalysis};
@@ -17,6 +18,7 @@ use chess::{Board, Piece, Square};
 use engine::Engine;
 use game::{Game, GameState};
 use bundled::list_models;
+use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError, Weak};
@@ -100,6 +102,8 @@ fn shared_session(app: &AppHandle, model: &str, history: usize) -> Result<Arc<ma
     *cache = Some((model.to_string(), history, Arc::downgrade(&session)));
     Ok(session)
 }
+
+const SLIP_DEPTH: u32 = 8;
 
 fn touch(clock: &Mutex<Instant>) {
     *clock.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
@@ -403,8 +407,58 @@ fn wait_for_turn(pause: Duration, state: &AppState, generation: u64) -> Result<(
     Ok(())
 }
 
+// Stockfish runs while the bot is "thinking", so the pause hides the cost; any failure keeps Maia's move
+fn time_pressure_slip(
+    app: &AppHandle,
+    state: &AppState,
+    start_fen: &str,
+    moves: &[String],
+    policy: &HashMap<String, f64>,
+    chosen: &str,
+    clock: timing::ClockInfo,
+) -> Option<String> {
+    let factor = sloppiness::clock_factor(clock.remaining_ms / clock.base_ms);
+    if !(factor > 1.0) {
+        return None;
+    }
+    let candidates = sloppiness::candidate_moves(policy, chosen);
+    let scores = stockfish_scores(app, state, start_fen, moves, &candidates)
+        .map_err(|e| log::warn!("[sloppiness] {e}"))
+        .ok()?;
+    if !sloppiness::is_balanced(scores.best_chances) {
+        return None;
+    }
+    let total: f64 = policy.values().filter(|p| **p > 0.0).sum();
+    let scored: Vec<sloppiness::Scored> = scores
+        .scores
+        .into_iter()
+        .map(|s| sloppiness::Scored { prob: policy.get(&s.uci).copied().unwrap_or(0.0) / total, uci: s.uci, loss: s.win_loss })
+        .collect();
+    sloppiness::slip(chosen, &scored, factor, [timing::random_unit(), timing::random_unit()])
+}
+
+fn stockfish_scores(
+    app: &AppHandle,
+    state: &AppState,
+    start_fen: &str,
+    moves: &[String],
+    candidates: &[String],
+) -> Result<insights::MoveScores, String> {
+    let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
+    if slot.is_none() {
+        *slot = Some(spawn_stockfish(app, state)?);
+    }
+    let sf = slot.as_mut().ok_or("stockfish is not running")?;
+    if state.stockfish_opts_dirty.load(Ordering::SeqCst) {
+        apply_stockfish_opts(sf, state)?;
+    }
+    let result = insights::score_moves(sf, start_fen, moves, candidates, SLIP_DEPTH);
+    touch(&state.stockfish_last_used);
+    result
+}
+
 #[tauri::command(async)]
-fn engine_move(app: AppHandle, state: State<AppState>, clock: Option<timing::ClockInfo>) -> Result<GameState, String> {
+fn engine_move(app: AppHandle, state: State<AppState>, clock: Option<timing::ClockInfo>, slips: Option<bool>) -> Result<GameState, String> {
     let started = Instant::now();
     let (start_fen, moves, generation) = {
         let game = state.game.lock().unwrap_or_else(PoisonError::into_inner);
@@ -412,7 +466,7 @@ fn engine_move(app: AppHandle, state: State<AppState>, clock: Option<timing::Clo
         (start_fen.to_string(), moves.to_vec(), state.generation.load(Ordering::SeqCst))
     };
 
-    let (uci_move, policy) = {
+    let (mut uci_move, policy) = {
         let mut slot = state.engine.lock().unwrap_or_else(PoisonError::into_inner);
         revive_engine(&app, state.inner(), &mut slot)?;
         let ratings = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner).as_ref().map(|s| (s.elo, s.oppo_elo));
@@ -433,6 +487,12 @@ fn engine_move(app: AppHandle, state: State<AppState>, clock: Option<timing::Clo
     };
 
     if let (Some(clock), Some(policy)) = (clock, policy) {
+        if slips == Some(true) {
+            if let Some(slip) = time_pressure_slip(&app, state.inner(), &start_fen, &moves, &policy, &uci_move, clock) {
+                log::info!("[sloppiness] {uci_move} -> {slip}");
+                uci_move = slip;
+            }
+        }
         if let Some(pause) = timing::think_pause(&start_fen, &moves, &policy, clock) {
             wait_for_turn(pause.saturating_sub(started.elapsed()), &state, generation)?;
         }

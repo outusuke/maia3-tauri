@@ -117,7 +117,7 @@ fn pause_secs(median_ln: f64, u: f64, left_secs: f64) -> f64 {
 }
 
 // splitmix64 over the clock and a counter; std only, so no new dependency
-fn random_unit() -> f64 {
+pub(crate) fn random_unit() -> f64 {
     static COUNTER: AtomicU64 = AtomicU64::new(0);
     let nanos = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
     let mut z = nanos ^ COUNTER.fetch_add(0x9E37_79B9_7F4A_7C15, Ordering::Relaxed);

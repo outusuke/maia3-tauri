@@ -38,6 +38,8 @@ pub struct MoveScore {
 #[serde(rename_all = "camelCase")]
 pub struct MoveScores {
     pub best_uci: Option<String>,
+    /// Side to move's winning chances after the best move, -1..1.
+    pub best_chances: f64,
     pub scores: Vec<MoveScore>,
 }
 
@@ -128,7 +130,7 @@ pub fn score_moves(
     depth: u32,
 ) -> Result<MoveScores, String> {
     if moves.is_empty() {
-        return Ok(MoveScores { best_uci: None, scores: Vec::new() });
+        return Ok(MoveScores { best_uci: None, best_chances: 0.0, scores: Vec::new() });
     }
     let fen = format!("{}", position_after(start_fen, ucis)?);
 
@@ -151,5 +153,5 @@ pub fn score_moves(
         })
         .collect();
 
-    Ok(MoveScores { best_uci: best.pv.first().cloned(), scores })
+    Ok(MoveScores { best_uci: best.pv.first().cloned(), best_chances: winning_chances(best_eff), scores })
 }

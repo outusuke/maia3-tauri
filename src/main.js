@@ -19,6 +19,7 @@ function snapshotSession() {
       temperature: els.temperatureSlider.value,
       topP: els.topPSlider.value,
       opening: els.openingCheckbox.checked,
+      slips: els.slipsCheckbox.checked,
     },
     play: live ? {
       startFen,
@@ -155,6 +156,7 @@ async function restoreSession() {
     if (st.temperature) { els.temperatureSlider.value = st.temperature; els.temperatureSlider.dispatchEvent(new Event("input")); }
     if (st.topP) { els.topPSlider.value = st.topP; els.topPSlider.dispatchEvent(new Event("input")); }
     if (typeof st.opening === "boolean") els.openingCheckbox.checked = st.opening;
+    if (typeof st.slips === "boolean") els.slipsCheckbox.checked = st.slips;
     if (st.side) els.sideSelect.querySelector(`button[data-value="${st.side}"]`)?.click();
     if (s.analyze) restoreAnalyze(s.analyze);
     if (s.tab) switchTab(s.tab);

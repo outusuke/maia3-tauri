@@ -22,6 +22,7 @@ const els = {
   topPSlider: document.getElementById("top-p-slider"),
   topPValue: document.getElementById("top-p-value"),
   openingCheckbox: document.getElementById("opening-checkbox"),
+  slipsCheckbox: document.getElementById("slips-checkbox"),
   helpToast: document.getElementById("help-toast"),
   promoPicker: document.getElementById("promo-picker"),
   startFenInput: document.getElementById("start-fen-input"),
@@ -90,6 +91,7 @@ els.topPSlider.addEventListener("input", () => { els.topPValue.textContent = Num
 const HELP = {
   temperature: ["Temperature", "How closely Maia sticks to its favorite move. Low plays the top choice almost every time. 1.0 mirrors how real players at this Elo pick moves."],
   topP: ["Top-p", "Drops the least likely moves before Maia picks. Lower cuts obvious blunders. At 1.0 every legal move stays in play."],
+  slips: ["Slips under time pressure", "With the clock running down, Maia blunders more often, about 1.5x at half time and over 2x near the end, as real players do. Uses Stockfish while it thinks. Only in timed games."],
   opening: ["Loose opening", "Plays Maia's first 4 moves at temp 1.0 and top-p 1.0, so low temperatures don't open 1.e4 every game. Your settings take over from move 5."],
 };
 let helpKey = null;
@@ -119,6 +121,7 @@ document.querySelectorAll(".helpBtn").forEach((btn) => btn.addEventListener("cli
   el.addEventListener("pointerup", () => showHelp(key, 2500));
 });
 els.openingCheckbox.addEventListener("change", () => { if (els.openingCheckbox.checked) showHelp("opening"); });
+els.slipsCheckbox.addEventListener("change", () => { if (els.slipsCheckbox.checked) showHelp("slips"); });
 
 els.startBtn.addEventListener("click", startGame);
 els.flipBtn.addEventListener("click", () => { flipped = !flipped; renderPlayBoard(); });
@@ -431,7 +434,7 @@ async function triggerEngineMove() {
   try {
     const botColor = playerColor === "white" ? "black" : "white";
     const botClock = clock && { remainingMs: Math.max(0, clockLeft(botColor)), baseMs: clock.base, incMs: clock.inc };
-    const reply = await invoke("engine_move", { clock: botClock });
+    const reply = await invoke("engine_move", { clock: botClock, slips: els.slipsCheckbox.checked });
     if (state.status === "timeout") return; // the clock ran out while Maia was thinking
     state = reply;
     syncClockTurn();
