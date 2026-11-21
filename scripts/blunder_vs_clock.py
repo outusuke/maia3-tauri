@@ -36,7 +36,7 @@ def wanted(text, event, tcs):
         return None
     m = re.search(r'\[Event "([^"]*)"', text)
     t = re.search(r'\[TimeControl "(\d+)\+(\d+)"', text)
-    if not m or not t or event not in m.group(1):
+    if not m or not t or int(t.group(1)) == 0 or event not in m.group(1):
         return None
     tc = f"{t.group(1)}+{t.group(2)}"
     return (int(t.group(1)), int(t.group(2))) if not tcs or tc in tcs else None
