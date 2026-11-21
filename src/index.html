@@ -254,14 +254,6 @@
         <div class="panel listCollapsed paneMoves" id="flaggedPanel" style="display:none;">
           <h2 id="flaggedHeading"><span>Key moments <span id="flaggedCount" class="hint"></span></span></h2>
           <div id="flaggedList"></div>
-          <div class="inlineRow" id="practiceSideRow" style="display:none;">
-            <label for="practiceSideSelect">Practice</label>
-            <select id="practiceSideSelect">
-              <option value="both">Both sides</option>
-              <option value="white">White's mistakes</option>
-              <option value="black">Black's mistakes</option>
-            </select>
-          </div>
           <button id="practiceBtn" class="primary" style="display:none;">Practice my mistakes →</button>
         </div>
         <button type="button" class="linkBtn" id="importAnotherBtn">Import another PGN</button>
@@ -275,6 +267,14 @@
 
         <div class="panel" id="puzzlePanelV2">
           <h2>Practice</h2>
+          <div class="inlineRow" id="practiceSideRow" style="display:none;">
+            <label for="practiceSideSelect">Side</label>
+            <select id="practiceSideSelect">
+              <option value="both">Both sides</option>
+              <option value="white">White's mistakes</option>
+              <option value="black">Black's mistakes</option>
+            </select>
+          </div>
           <div id="puzzleProgressV2"></div>
           <div id="puzzlePromptV2"></div>
           <div id="puzzleFeedbackV2"></div>

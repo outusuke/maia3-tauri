@@ -804,6 +804,10 @@ let puzzles = [];
 function updatePracticeControls() {
   allPuzzles = analysis
     .filter((m) => (m.grade === "mistake" || m.grade === "blunder") && m.bestMoveUci);
+  for (const opt of az.practiceSideSelect.options) {
+    opt.disabled = opt.value !== "both" && !allPuzzles.some((m) => sideToMove(m.fenBefore) === opt.value);
+  }
+  if (az.practiceSideSelect.selectedOptions[0]?.disabled) az.practiceSideSelect.value = "both";
   const side = az.practiceSideSelect.value;
   puzzles = allPuzzles.filter((m) => side === "both" || sideToMove(m.fenBefore) === side);
   if (allPuzzles.length === 0) {
