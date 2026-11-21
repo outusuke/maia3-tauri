@@ -400,6 +400,15 @@
         <p class="hint" id="no-model-hint" style="display:none;">This build has no Maia-3 model bundled.</p>
       </div>
 
+      <div class="field" id="oppo-field">
+        <div class="fieldHead">
+          <label for="oppo-slider">Your rating: <b id="oppo-value">Same as Maia</b></label>
+          <label class="checkRow"><input type="checkbox" id="oppo-auto" checked /> Same as Maia</label>
+        </div>
+        <input type="range" id="oppo-slider" min="600" max="2600" step="50" value="1500" disabled />
+        <p class="hint">Maia plays differently depending on the rating it expects from you.</p>
+      </div>
+
       <div class="field">
         <span class="fieldLabel">Play as</span>
         <div class="segmented" id="side-select" role="radiogroup" aria-label="Play as">
@@ -455,6 +464,17 @@
         <div class="chips" id="capChips" role="group" aria-label="Max time per search">
           <button type="button" data-cap="2">2s</button><button type="button" data-cap="5" class="active">5s</button><button type="button" data-cap="10">10s</button><button type="button" data-cap="0">None</button>
         </div>
+      </div>
+      <div class="setRow"><label for="sfThreads">Stockfish threads</label>
+        <select id="sfThreads"></select>
+      </div>
+      <div class="setRow"><label for="sfHash">Stockfish memory</label>
+        <select id="sfHash">
+          <option value="">Default (128 MB)</option>
+          <option value="64">64 MB</option>
+          <option value="256">256 MB</option>
+          <option value="512">512 MB</option>
+        </select>
       </div>
 
       <h3>Live analysis</h3>

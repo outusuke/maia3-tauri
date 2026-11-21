@@ -399,9 +399,20 @@
       localStorage.setItem(REVIEW_PREFS_KEY, JSON.stringify({
         depth: az.depthSelect.value, lines: analyzeOpts.lines, cap: analyzeOpts.capSecs,
         engLines: eng.lines.value, hiRating: hi.rating.value,
+        threads: $("sfThreads").value, hash: $("sfHash").value,
       }));
     } catch {}
   }
+  const sfThreads = $("sfThreads"), sfHash = $("sfHash");
+  const maxThreads = Math.max(1, navigator.hardwareConcurrency || 1);
+  sfThreads.innerHTML = `<option value="">Auto (half the cores)</option>` +
+    Array.from({ length: maxThreads }, (_, i) => `<option value="${i + 1}">${i + 1}</option>`).join("");
+  const pushStockfishOptions = () => {
+    invoke("set_stockfish_options", {
+      threads: sfThreads.value ? Number(sfThreads.value) : null,
+      hashMb: sfHash.value ? Number(sfHash.value) : null,
+    }).catch(() => {});
+  };
   function loadReviewPrefs() {
     let p = null;
     try { p = JSON.parse(localStorage.getItem(REVIEW_PREFS_KEY)); } catch {}
@@ -410,10 +421,14 @@
     $("lineChips").querySelector(`button[data-lines="${p.lines}"]`)?.click();
     $("capChips").querySelector(`button[data-cap="${p.cap}"]`)?.click();
     if (p.engLines) eng.lines.value = p.engLines;
+    if (p.threads && Number(p.threads) <= maxThreads) sfThreads.value = p.threads;
+    if (p.hash) sfHash.value = p.hash;
+    if (sfThreads.value || sfHash.value) pushStockfishOptions();
     if (p.hiRating && [...hi.rating.options].some((o) => o.value === String(p.hiRating))) hi.rating.value = p.hiRating;
   }
   loadReviewPrefs();
-  [az.depthSelect, eng.lines, hi.rating].forEach((el) => el.addEventListener("change", saveReviewPrefs));
+  [az.depthSelect, eng.lines, hi.rating, sfThreads, sfHash].forEach((el) => el.addEventListener("change", saveReviewPrefs));
+  [sfThreads, sfHash].forEach((el) => el.addEventListener("change", pushStockfishOptions));
   az.depthSelect.addEventListener("input", saveReviewPrefs);
   ["lineChips", "capChips"].forEach((id) => $(id).addEventListener("click", saveReviewPrefs));
 

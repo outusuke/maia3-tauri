@@ -14,6 +14,9 @@ const els = {
   modelSelect: document.getElementById("model-select"),
   eloSlider: document.getElementById("elo-slider"),
   eloValue: document.getElementById("elo-value"),
+  oppoAuto: document.getElementById("oppo-auto"),
+  oppoSlider: document.getElementById("oppo-slider"),
+  oppoValue: document.getElementById("oppo-value"),
   temperatureSlider: document.getElementById("temperature-slider"),
   temperatureValue: document.getElementById("temperature-value"),
   topPSlider: document.getElementById("top-p-slider"),
@@ -62,16 +65,26 @@ let posHistory = [{ fen: STANDARD_FEN, lastMove: null }];
 let viewPly = 0; // index into posHistory currently shown; live = length-1
 
 els.eloSlider.addEventListener("input", () => { els.eloValue.textContent = els.eloSlider.value; });
-els.eloSlider.addEventListener("change", async () => {
+// null means Maia assumes you are at its own Elo
+function oppoElo() { return els.oppoAuto.checked ? null : parseInt(els.oppoSlider.value, 10); }
+function syncOppoUI() {
+  els.oppoSlider.disabled = els.oppoAuto.checked;
+  els.oppoValue.textContent = els.oppoAuto.checked ? "Same as Maia" : els.oppoSlider.value;
+}
+async function applyEloLive() {
   if (!gameStarted || isGameOver()) return; // pre-game, this just sets the value startGame() will read
   const elo = parseInt(els.eloSlider.value, 10);
   try {
-    await invoke("set_engine_elo", { elo });
+    await invoke("set_engine_elo", { elo, oppoElo: oppoElo() });
     setStatus(`Maia-3 Elo set to ${elo} for the rest of this game.`);
   } catch (err) {
     setStatus(`Could not update Elo: ${err}`);
   }
-});
+}
+els.eloSlider.addEventListener("change", applyEloLive);
+els.oppoSlider.addEventListener("input", syncOppoUI);
+els.oppoSlider.addEventListener("change", applyEloLive);
+els.oppoAuto.addEventListener("change", () => { syncOppoUI(); applyEloLive(); });
 els.temperatureSlider.addEventListener("input", () => { els.temperatureValue.textContent = Number(els.temperatureSlider.value).toFixed(2).replace(/0$/, ""); });
 els.topPSlider.addEventListener("input", () => { els.topPValue.textContent = Number(els.topPSlider.value).toFixed(2).replace(/0$/, ""); });
 const HELP = {
@@ -350,6 +363,7 @@ async function startGame() {
     await invoke("start_engine", {
       command: model,
       elo,
+      oppoElo: oppoElo(),
       extraArgs: [
         "--temperature", String(temperature),
         "--top-p", String(topP),

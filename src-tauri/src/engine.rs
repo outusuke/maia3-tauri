@@ -111,11 +111,7 @@ impl Engine {
     #[cfg(not(target_os = "android"))]
     pub fn spawn_process_stockfish(path: &Path) -> Result<Self, String> {
         let (process, rx) = process_stockfish::start(path)?;
-        let mut engine = Engine { link: Link::Process(process), rx, cancel: None }.handshake()?;
-        let cores = std::thread::available_parallelism().map_or(1, |n| n.get());
-        engine.send(&format!("setoption name Threads value {}", (cores / 2).clamp(1, 8)))?;
-        engine.send("setoption name Hash value 128")?;
-        Ok(engine)
+        Engine { link: Link::Process(process), rx, cancel: None }.handshake()
     }
 
     pub fn set_cancel(&mut self, flag: Option<Arc<AtomicBool>>) {
@@ -175,9 +171,18 @@ impl Engine {
         }
     }
 
-    // sets Elo for both sides; Maia-3 also has separate SelfElo/OppoElo
-    pub fn set_elo(&mut self, elo: u32) -> Result<(), String> {
-        self.send(&format!("setoption name Elo value {elo}"))
+    // Elo sets both sides; oppo_elo then overrides the rating Maia-3 assumes for the other player
+    pub fn set_elo(&mut self, elo: u32, oppo_elo: Option<u32>) -> Result<(), String> {
+        self.send(&format!("setoption name Elo value {elo}"))?;
+        if let Some(oppo) = oppo_elo {
+            self.send(&format!("setoption name OppoElo value {oppo}"))?;
+        }
+        Ok(())
+    }
+
+    pub fn set_threads_and_hash(&mut self, threads: u32, hash_mb: u32) -> Result<(), String> {
+        self.send(&format!("setoption name Threads value {threads}"))?;
+        self.send(&format!("setoption name Hash value {hash_mb}"))
     }
 
     // nodes 1: Maia is one forward pass, search depth changes nothing; full move list feeds --use-uci-history

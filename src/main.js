@@ -15,6 +15,7 @@ function snapshotSession() {
     settings: {
       side: selectedSide(),
       elo: els.eloSlider.value,
+      oppoElo: oppoElo(),
       temperature: els.temperatureSlider.value,
       topP: els.topPSlider.value,
       opening: els.openingCheckbox.checked,
@@ -94,6 +95,7 @@ async function restorePlay(p) {
   await invoke("start_engine", {
     command: model,
     elo,
+    oppoElo: oppoElo(),
     extraArgs: [
       "--temperature", els.temperatureSlider.value,
       "--top-p", els.topPSlider.value,
@@ -149,6 +151,7 @@ async function restoreSession() {
   try {
     const st = s.settings || {};
     if (st.elo) { els.eloSlider.value = st.elo; els.eloValue.textContent = st.elo; }
+    if (st.oppoElo) { els.oppoSlider.value = st.oppoElo; els.oppoAuto.checked = false; syncOppoUI(); }
     if (st.temperature) { els.temperatureSlider.value = st.temperature; els.temperatureSlider.dispatchEvent(new Event("input")); }
     if (st.topP) { els.topPSlider.value = st.topP; els.topPSlider.dispatchEvent(new Event("input")); }
     if (typeof st.opening === "boolean") els.openingCheckbox.checked = st.opening;

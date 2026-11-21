@@ -33,6 +33,10 @@ struct AppState {
     stockfish: Mutex<Option<Engine>>,
     // the UI starts Stockfish once and never asks again, so a reaped one has to come back on demand
     stockfish_wanted: AtomicBool,
+    // user picks from Settings; None keeps the built-in default
+    stockfish_threads: Mutex<Option<u32>>,
+    stockfish_hash_mb: Mutex<Option<u32>>,
+    stockfish_opts_dirty: AtomicBool,
     stockfish_last_used: Mutex<Instant>,
     analysis_cancel: Arc<AtomicBool>,
     insights: Mutex<Option<Engine>>,
@@ -45,6 +49,7 @@ struct AppState {
 struct EngineSpec {
     model: String,
     elo: u32,
+    oppo_elo: Option<u32>,
     args: Vec<String>,
 }
 
@@ -99,14 +104,28 @@ fn touch(clock: &Mutex<Instant>) {
     *clock.lock().unwrap_or_else(PoisonError::into_inner) = Instant::now();
 }
 
-fn spawn_stockfish(app: &AppHandle) -> Result<Engine, String> {
+fn spawn_stockfish(app: &AppHandle, state: &AppState) -> Result<Engine, String> {
     #[cfg(target_os = "android")]
-    {
+    let mut engine = {
         let _ = app;
-        Engine::spawn_native_stockfish()
-    }
+        Engine::spawn_native_stockfish()?
+    };
     #[cfg(not(target_os = "android"))]
-    Engine::spawn_process_stockfish(&bundled::stockfish_binary(app)?)
+    let mut engine = Engine::spawn_process_stockfish(&bundled::stockfish_binary(app)?)?;
+    // the Android build never set these before, so it only gets them once the user picks something
+    let wanted = cfg!(not(target_os = "android")) || state.stockfish_opts_dirty.load(Ordering::SeqCst);
+    if wanted {
+        apply_stockfish_opts(&mut engine, state)?;
+    }
+    Ok(engine)
+}
+
+fn apply_stockfish_opts(sf: &mut Engine, state: &AppState) -> Result<(), String> {
+    let cores = std::thread::available_parallelism().map_or(1, |n| n.get()) as u32;
+    let threads = state.stockfish_threads.lock().unwrap_or_else(PoisonError::into_inner).unwrap_or((cores / 2).clamp(1, 8));
+    let hash_mb = state.stockfish_hash_mb.lock().unwrap_or_else(PoisonError::into_inner).unwrap_or(128);
+    state.stockfish_opts_dirty.store(false, Ordering::SeqCst);
+    sf.set_threads_and_hash(threads, hash_mb)
 }
 
 fn with_stockfish<T>(
@@ -117,9 +136,12 @@ fn with_stockfish<T>(
     let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     if slot.is_none() && state.stockfish_wanted.load(Ordering::SeqCst) {
         log::info!("[stockfish] restarting after an idle shutdown");
-        *slot = Some(spawn_stockfish(app)?);
+        *slot = Some(spawn_stockfish(app, state)?);
     }
     let sf = slot.as_mut().ok_or("stockfish is not running")?;
+    if state.stockfish_opts_dirty.load(Ordering::SeqCst) {
+        apply_stockfish_opts(sf, state)?;
+    }
     let result = run(sf);
     touch(&state.stockfish_last_used);
     result
@@ -161,7 +183,7 @@ fn revive_engine(app: &AppHandle, state: &AppState, slot: &mut Option<Engine>) -
     if let Some(spec) = spec {
         log::info!("[engine] reviving {} at {} Elo", spec.model, spec.elo);
         let mut eng = spawn_maia(app, &spec.model, spec.args)?;
-        eng.set_elo(spec.elo)?;
+        eng.set_elo(spec.elo, spec.oppo_elo)?;
         *slot = Some(eng);
     }
     Ok(())
@@ -230,6 +252,7 @@ fn start_engine(
     state: State<AppState>,
     command: String,
     elo: u32,
+    oppo_elo: Option<u32>,
     extra_args: Option<Vec<String>>,
 ) -> Result<(), String> {
     let mut slot = state.engine.lock().unwrap_or_else(PoisonError::into_inner);
@@ -239,10 +262,10 @@ fn start_engine(
     let extra_args = extra_args.unwrap_or_default();
     log::info!("[engine] start_engine model={command} elo={elo} args={extra_args:?}");
     let mut eng = spawn_maia(&app, &command, extra_args.clone())?;
-    eng.set_elo(elo)?;
+    eng.set_elo(elo, oppo_elo)?;
     *slot = Some(eng);
     *state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner) =
-        Some(EngineSpec { model: command, elo, args: extra_args });
+        Some(EngineSpec { model: command, elo, oppo_elo, args: extra_args });
     touch(&state.engine_last_used);
     Ok(())
 }
@@ -304,17 +327,25 @@ fn stop_engine(state: State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn set_engine_elo(state: State<AppState>, elo: u32) -> Result<(), String> {
+fn set_engine_elo(state: State<AppState>, elo: u32, oppo_elo: Option<u32>) -> Result<(), String> {
     let mut spec = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner);
     let spec = spec.as_mut().ok_or("engine not running")?;
     spec.elo = elo;
+    spec.oppo_elo = oppo_elo;
     // mid-search the lock is taken; engine_move re-applies spec.elo before the next move
     if let Ok(mut slot) = state.engine.try_lock() {
         if let Some(eng) = slot.as_mut() {
-            eng.set_elo(elo)?;
+            eng.set_elo(elo, oppo_elo)?;
         }
     }
     Ok(())
+}
+
+#[tauri::command]
+fn set_stockfish_options(state: State<AppState>, threads: Option<u32>, hash_mb: Option<u32>) {
+    *state.stockfish_threads.lock().unwrap_or_else(PoisonError::into_inner) = threads.map(|t| t.clamp(1, 64));
+    *state.stockfish_hash_mb.lock().unwrap_or_else(PoisonError::into_inner) = hash_mb.map(|h| h.clamp(1, 4096));
+    state.stockfish_opts_dirty.store(true, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -355,10 +386,10 @@ fn engine_move(app: AppHandle, state: State<AppState>) -> Result<GameState, Stri
     let uci_move = {
         let mut slot = state.engine.lock().unwrap_or_else(PoisonError::into_inner);
         revive_engine(&app, state.inner(), &mut slot)?;
-        let elo = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner).as_ref().map(|s| s.elo);
+        let ratings = state.engine_spec.lock().unwrap_or_else(PoisonError::into_inner).as_ref().map(|s| (s.elo, s.oppo_elo));
         let eng = slot.as_mut().ok_or("engine not running")?;
-        if let Some(elo) = elo {
-            eng.set_elo(elo)?;
+        if let Some((elo, oppo_elo)) = ratings {
+            eng.set_elo(elo, oppo_elo)?;
         }
         let mv = eng.best_move(&start_fen, &moves, Duration::from_secs(30))?;
         touch(&state.engine_last_used);
@@ -390,7 +421,7 @@ fn undo_move(state: State<AppState>) -> Result<GameState, String> {
 fn start_stockfish(app: AppHandle, state: State<AppState>) -> Result<(), String> {
     let mut slot = state.stockfish.lock().unwrap_or_else(PoisonError::into_inner);
     *slot = None;
-    *slot = Some(spawn_stockfish(&app)?);
+    *slot = Some(spawn_stockfish(&app, state.inner())?);
     state.stockfish_wanted.store(true, Ordering::SeqCst);
     touch(&state.stockfish_last_used);
     Ok(())
@@ -592,6 +623,9 @@ pub fn run() {
             engine_spec: Mutex::new(None),
             stockfish: Mutex::new(None),
             stockfish_wanted: AtomicBool::new(false),
+            stockfish_threads: Mutex::new(None),
+            stockfish_hash_mb: Mutex::new(None),
+            stockfish_opts_dirty: AtomicBool::new(false),
             stockfish_last_used: Mutex::new(Instant::now()),
             analysis_cancel: Arc::new(AtomicBool::new(false)),
             insights: Mutex::new(None),
@@ -668,6 +702,7 @@ pub fn run() {
             human_moves,
             score_human_moves,
             set_engine_elo,
+            set_stockfish_options,
             suspend_engines,
             resume_engines,
             engine_move,
