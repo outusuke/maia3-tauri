@@ -108,9 +108,9 @@ kbd {
 .sheetSub { margin: 4px 0 0; font-size: 13.5px; color: var(--muted); }
 .sheetClose { flex: none; width: 36px; height: 36px; border: 0; border-radius: 50%; background: var(--panel-bg-2); color: var(--muted); font-size: 14px; cursor: pointer; }
 .sheetClose:hover { color: var(--text); }
-#setup-panel .field { margin-bottom: 20px; }
-#setup-panel .fieldLabel, #setup-panel .fieldHead label { font-size: 13px; font-weight: 600; color: var(--text); }
-#setup-panel .fieldHead { margin-bottom: 10px; }
+#setup-panel .field, .aboutCard .field { margin-bottom: 20px; }
+#setup-panel .fieldLabel, #setup-panel .fieldHead label, .aboutCard .fieldLabel, .aboutCard .fieldHead label { font-size: 13px; font-weight: 600; color: var(--text); }
+#setup-panel .fieldHead, .aboutCard .fieldHead { margin-bottom: 10px; }
 .eloRow { display: flex; margin: 14px 0 6px; font-size: 13.5px; color: var(--muted); }
 .eloRow b { color: var(--text); font-size: 17px; }
 .sheetError { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; background: rgba(255, 143, 138, .12); color: var(--danger); font-size: 13px; }
@@ -193,7 +193,8 @@ body[data-tab="analyze"] .oppCard { display: none; }
 .sheetTitle { flex: 1; min-width: 0; }
 .sheetClose { margin-left: auto; }
 body.noGame .sheetClose { display: none; }
-#setup-panel .eloRow { flex-direction: column; align-items: center; margin: 4px 0 0; }
+#setup-panel .eloRow, .aboutCard .eloRow { flex-direction: column; align-items: center; margin: 4px 0 0; }
+.aboutCard .eloRow b { font-size: 44px; line-height: 1; font-weight: 800; letter-spacing: -0.04em; color: var(--accent); }
 #setup-panel .eloRow b { font-size: 72px; line-height: 1; font-weight: 800; letter-spacing: -0.04em; color: var(--accent); }
 .eloUnit { margin-top: 2px; font-size: 13px; color: var(--muted); }
 #elo-slider { margin: 14px 0 12px; }
@@ -384,3 +385,9 @@ body.noGame .sheetClose { display: none; }
 /* once a game is open, Load a game stays right under the tabs (folded to one line), so no scrolling to paste */
 #analyzeTab.hasGame #loadPanel,
 #analyzeTab.analyzed #loadPanel { order: -1 !important; }
+
+/* ---- settings dialog: controls moved over from the Play and Review panels ---- */
+.aboutCard .field:last-child { margin-bottom: 0; }
+.aboutCard .setRow label { flex: 1; }
+.aboutCard input[type="range"] { width: 100%; }
+#sheet-summary { display: block; width: 100%; margin: 0 0 14px; text-align: left; }

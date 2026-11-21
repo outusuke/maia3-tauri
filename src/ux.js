@@ -108,6 +108,17 @@
     if (e.key === "Escape" && sheetIsOpen() && document.body.dataset.tab === "play") closeSheet();
   });
 
+  // ---------- one-line recap of the Settings choices on the New game sheet ----------
+  function syncSheetSummary() {
+    const side = els.sideSelect.querySelector("button.active");
+    const time = els.timeSelect.querySelector("button.active");
+    $("sheet-summary").textContent = `Maia ${els.eloSlider.value} · ${side ? side.textContent : "Random"} · ${time ? time.textContent : "None"}  ·  Change in Settings`;
+  }
+  [els.eloSlider, els.sideSelect, els.timeSelect].forEach((el) => {
+    el.addEventListener("input", syncSheetSummary);
+    el.addEventListener("click", () => setTimeout(syncSheetSummary));
+  });
+
   // ---------- opponent card in the side panel ----------
   function syncOpp() {
     const elo = parseInt(els.eloSlider.value, 10);
@@ -164,6 +175,7 @@
     els.resignBtn.disabled = !gameStarted || isGameOver();
     startCard.hidden = hasGame || sheetIsOpen();
     $("sheet-note").hidden = !(gameStarted && !isGameOver());
+    syncSheetSummary();
     syncOpp();
 
     const over = isGameOver();
@@ -379,6 +391,31 @@
     evalBar.classList.toggle("flipped", azFlipped);
   }
   ["renderAnalyzeBoard", "renderAccuracy", "loadAnalysisGame"].forEach((n) => wrap(n, { after: syncEvalBar }));
+
+  // Review choices live in Settings now, so they are remembered across launches
+  const REVIEW_PREFS_KEY = "maia3.reviewPrefs";
+  function saveReviewPrefs() {
+    try {
+      localStorage.setItem(REVIEW_PREFS_KEY, JSON.stringify({
+        depth: az.depthSelect.value, lines: analyzeOpts.lines, cap: analyzeOpts.capSecs,
+        engLines: eng.lines.value, hiRating: hi.rating.value,
+      }));
+    } catch {}
+  }
+  function loadReviewPrefs() {
+    let p = null;
+    try { p = JSON.parse(localStorage.getItem(REVIEW_PREFS_KEY)); } catch {}
+    if (!p) return;
+    if (p.depth) az.depthSelect.value = p.depth;
+    $("lineChips").querySelector(`button[data-lines="${p.lines}"]`)?.click();
+    $("capChips").querySelector(`button[data-cap="${p.cap}"]`)?.click();
+    if (p.engLines) eng.lines.value = p.engLines;
+    if (p.hiRating && [...hi.rating.options].some((o) => o.value === String(p.hiRating))) hi.rating.value = p.hiRating;
+  }
+  loadReviewPrefs();
+  [az.depthSelect, eng.lines, hi.rating].forEach((el) => el.addEventListener("change", saveReviewPrefs));
+  az.depthSelect.addEventListener("input", saveReviewPrefs);
+  ["lineChips", "capChips"].forEach((id) => $(id).addEventListener("click", saveReviewPrefs));
 
   syncElo();
   syncSheet();

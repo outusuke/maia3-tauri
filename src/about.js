@@ -40,7 +40,8 @@ async function loadAboutVersion() {
 function openAbout() {
   aboutOpener = document.activeElement;
   aboutOverlay.classList.add("show");
-  aboutClose.focus();
+  aboutOverlay.querySelector(".aboutCard").scrollTop = 0;
+  aboutClose.focus({ preventScroll: true });
 }
 
 function closeAbout() {

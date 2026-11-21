@@ -82,42 +82,13 @@
           <div class="sheetHead">
             <div class="heroAvatar" aria-hidden="true">m&middot;3</div>
             <div class="sheetTitle">
-              <h2 id="setup-title">Choose your opponent</h2>
+              <h2 id="setup-title">New game</h2>
               <p class="sheetSub">Plays like a human, not an engine.</p>
             </div>
             <button type="button" class="sheetClose" id="setup-close" aria-label="Close">&#10005;</button>
           </div>
 
-          <div class="field" id="elo-field">
-            <div class="fieldHead">
-              <label for="elo-slider">Opponent strength</label>
-              <span id="active-model-name" title="Maia-3 model in use">Checking…</span>
-              <select id="model-select" hidden title="Maia-3 model"></select>
-            </div>
-            <div class="eloRow"><b id="elo-value">1500</b><span class="eloUnit">Elo</span></div>
-            <input type="range" id="elo-slider" min="600" max="2600" step="50" value="1500" />
-            <div class="presets" id="elo-presets" role="group" aria-label="Strength presets"></div>
-            <p class="hint" id="no-model-hint" style="display:none;">This build has no Maia-3 model bundled.</p>
-          </div>
-
-          <div class="field">
-            <span class="fieldLabel">Play as</span>
-            <div class="segmented" id="side-select" role="radiogroup" aria-label="Play as">
-              <button type="button" role="radio" data-value="white" aria-checked="false" aria-label="White" title="White">White</button>
-              <button type="button" role="radio" data-value="random" aria-checked="true" class="active" aria-label="Random" title="Random">Random</button>
-              <button type="button" role="radio" data-value="black" aria-checked="false" aria-label="Black" title="Black">Black</button>
-            </div>
-          </div>
-
-          <div class="field">
-            <span class="fieldLabel">Time</span>
-            <div class="chips" id="time-select" role="radiogroup" aria-label="Time control">
-              <button type="button" role="radio" data-base="0" data-inc="0" aria-checked="false">None</button>
-              <button type="button" role="radio" data-base="5" data-inc="0" aria-checked="false">5+0</button>
-              <button type="button" role="radio" data-base="10" data-inc="0" aria-checked="true" class="active">10+0</button>
-              <button type="button" role="radio" data-base="15" data-inc="10" aria-checked="false">15+10</button>
-            </div>
-          </div>
+          <button type="button" class="linkBtn aboutOpen" id="sheet-summary" title="Change strength, side, time and move style in Settings"></button>
 
           <p class="sheetError" id="sheet-error" role="alert" hidden></p>
           <p class="hint sheetNote" id="sheet-note" hidden>A game is in progress. Strength changes apply to it right away; starting a new game abandons it.</p>
@@ -125,30 +96,7 @@
           <button type="button" class="linkBtn" id="import-link">Import PGN to review &#9656;</button>
 
           <details id="advanced-settings">
-            <summary id="advanced-summary">Engine settings &middot; temperature, top-p, FEN</summary>
-
-            <div class="settingRow">
-              <div class="settingHead">
-                <span>Variety in moves <span class="techName">(temperature)</span>: <span id="temperature-value">0.5</span></span>
-                <button type="button" class="helpBtn" data-help="temperature" aria-label="About temperature">?</button>
-              </div>
-              <input type="range" id="temperature-slider" min="0" max="1.5" step="0.05" value="0.5" />
-            </div>
-
-            <div class="settingRow">
-              <div class="settingHead">
-                <span>Avoid odd moves <span class="techName">(top-p)</span>: <span id="top-p-value">0.9</span></span>
-                <button type="button" class="helpBtn" data-help="topP" aria-label="About top-p">?</button>
-              </div>
-              <input type="range" id="top-p-slider" min="0.1" max="1" step="0.05" value="0.9" />
-            </div>
-
-            <div class="settingRow">
-              <div class="settingHead">
-                <label class="checkRow"><input type="checkbox" id="opening-checkbox" checked /> Varied openings (first 4 moves)</label>
-                <button type="button" class="helpBtn" data-help="opening" aria-label="About loose opening">?</button>
-              </div>
-            </div>
+            <summary id="advanced-summary">Starting position &middot; FEN</summary>
 
             <div class="settingRow">
               <label for="start-fen-input">Starting position <span class="techName">(FEN)</span></label>
@@ -272,19 +220,7 @@
         </div>
 
         <div class="panel collapsible paneMoves" id="analyzeControlsPanel">
-          <h2>Analysis settings</h2>
-          <div class="setRow"><span>Search depth</span><b id="depthVal">14</b></div>
-          <input type="range" id="analyzeDepthSelect" min="8" max="24" step="1" value="14" />
-          <div class="setRow"><span>Lines per move <small>(more = slower)</small></span>
-            <div class="chips" id="lineChips" role="group" aria-label="Lines per move">
-              <button type="button" data-lines="1">1</button><button type="button" data-lines="2">2</button><button type="button" data-lines="3" class="active">3</button>
-            </div>
-          </div>
-          <div class="setRow"><span>Max time per search</span>
-            <div class="chips" id="capChips" role="group" aria-label="Max time per search">
-              <button type="button" data-cap="2">2s</button><button type="button" data-cap="5" class="active">5s</button><button type="button" data-cap="10">10s</button><button type="button" data-cap="0">None</button>
-            </div>
-          </div>
+          <h2>Analyze</h2>
           <div class="setRow">
             <label for="analyzeSideSelect">Grade</label>
             <select id="analyzeSideSelect">
@@ -294,6 +230,7 @@
             </select>
           </div>
           <div class="est" id="analyzeEst"></div>
+          <button type="button" class="linkBtn aboutOpen">Depth, lines and time cap in Settings</button>
           <button id="analyzeGameBtn" class="primary" disabled>Analyze game</button>
           <p class="hint analyzeNote">Results appear move by move. You can stop at any time and keep what's done. The engine runs on your CPU, nothing is uploaded.</p>
         </div>
@@ -372,11 +309,6 @@
           <div class="engHead">
             <input type="checkbox" id="engEnable" hidden autocomplete="off">
             <span class="engTitle"><i class="keyDot" style="background:#3b6ef2"></i>Stockfish</span>
-            <select id="engLines" title="Lines shown">
-              <option value="1">1 line</option>
-              <option value="2">2 lines</option>
-              <option value="3" selected>3 lines</option>
-            </select>
           </div>
           <div id="engNote" class="hint"></div>
           <div id="engBody" style="display:none;">
@@ -393,7 +325,6 @@
           <div class="engHead">
             <input type="checkbox" id="hiEnable" hidden autocomplete="off">
             <span class="engTitle"><i class="keyDot" style="background:#9b4fd8"></i>Maia</span>
-            <select id="hiRating" title="Rating of the player Maia imitates"></select>
           </div>
           <div id="hiStatus" class="hint"></div>
           <div id="hiBody" style="display:none;">
@@ -456,6 +387,88 @@
       <h2 id="about-title">maia<span>·3</span></h2>
       <p id="about-version"></p>
       <p>Play chess against Maia-3, an engine that plays like a human at the Elo you pick. Everything runs on this device.</p>
+      <h3>Opponent</h3>
+      <div class="field" id="elo-field">
+        <div class="fieldHead">
+          <label for="elo-slider">Opponent strength</label>
+          <span id="active-model-name" title="Maia-3 model in use">Checking…</span>
+          <select id="model-select" hidden title="Maia-3 model"></select>
+        </div>
+        <div class="eloRow"><b id="elo-value">1500</b><span class="eloUnit">Elo</span></div>
+        <input type="range" id="elo-slider" min="600" max="2600" step="50" value="1500" />
+        <div class="presets" id="elo-presets" role="group" aria-label="Strength presets"></div>
+        <p class="hint" id="no-model-hint" style="display:none;">This build has no Maia-3 model bundled.</p>
+      </div>
+
+      <div class="field">
+        <span class="fieldLabel">Play as</span>
+        <div class="segmented" id="side-select" role="radiogroup" aria-label="Play as">
+          <button type="button" role="radio" data-value="white" aria-checked="false" aria-label="White" title="White">White</button>
+          <button type="button" role="radio" data-value="random" aria-checked="true" class="active" aria-label="Random" title="Random">Random</button>
+          <button type="button" role="radio" data-value="black" aria-checked="false" aria-label="Black" title="Black">Black</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="fieldLabel">Time</span>
+        <div class="chips" id="time-select" role="radiogroup" aria-label="Time control">
+          <button type="button" role="radio" data-base="0" data-inc="0" aria-checked="false">None</button>
+          <button type="button" role="radio" data-base="5" data-inc="0" aria-checked="false">5+0</button>
+          <button type="button" role="radio" data-base="10" data-inc="0" aria-checked="true" class="active">10+0</button>
+          <button type="button" role="radio" data-base="15" data-inc="10" aria-checked="false">15+10</button>
+        </div>
+      </div>
+
+      <h3>Maia move style</h3>
+      <div class="settingRow">
+        <div class="settingHead">
+          <span>Variety in moves <span class="techName">(temperature)</span>: <span id="temperature-value">0.5</span></span>
+          <button type="button" class="helpBtn" data-help="temperature" aria-label="About temperature">?</button>
+        </div>
+        <input type="range" id="temperature-slider" min="0" max="1.5" step="0.05" value="0.5" />
+      </div>
+
+      <div class="settingRow">
+        <div class="settingHead">
+          <span>Avoid odd moves <span class="techName">(top-p)</span>: <span id="top-p-value">0.9</span></span>
+          <button type="button" class="helpBtn" data-help="topP" aria-label="About top-p">?</button>
+        </div>
+        <input type="range" id="top-p-slider" min="0.1" max="1" step="0.05" value="0.9" />
+      </div>
+
+      <div class="settingRow">
+        <div class="settingHead">
+          <label class="checkRow"><input type="checkbox" id="opening-checkbox" checked /> Varied openings (first 4 moves)</label>
+          <button type="button" class="helpBtn" data-help="opening" aria-label="About loose opening">?</button>
+        </div>
+      </div>
+
+      <h3>Stockfish review</h3>
+      <div class="setRow"><span>Search depth</span><b id="depthVal">14</b></div>
+      <input type="range" id="analyzeDepthSelect" min="8" max="24" step="1" value="14" />
+      <div class="setRow"><span>Lines per move <small>(more = slower)</small></span>
+        <div class="chips" id="lineChips" role="group" aria-label="Lines per move">
+          <button type="button" data-lines="1">1</button><button type="button" data-lines="2">2</button><button type="button" data-lines="3" class="active">3</button>
+        </div>
+      </div>
+      <div class="setRow"><span>Max time per search</span>
+        <div class="chips" id="capChips" role="group" aria-label="Max time per search">
+          <button type="button" data-cap="2">2s</button><button type="button" data-cap="5" class="active">5s</button><button type="button" data-cap="10">10s</button><button type="button" data-cap="0">None</button>
+        </div>
+      </div>
+
+      <h3>Live analysis</h3>
+      <div class="setRow"><label for="engLines">Stockfish lines shown</label>
+        <select id="engLines" title="Lines shown">
+          <option value="1">1 line</option>
+          <option value="2">2 lines</option>
+          <option value="3" selected>3 lines</option>
+        </select>
+      </div>
+      <div class="setRow"><label for="hiRating">Maia rating to imitate</label>
+        <select id="hiRating" title="Rating of the player Maia imitates"></select>
+      </div>
+
       <h3>Board</h3>
       <label class="checkRow"><input type="checkbox" id="pref-destinations" checked /> Show piece destinations</label>
       <h3>Theme</h3>

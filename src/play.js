@@ -243,7 +243,7 @@ els.sideSelect.addEventListener("click", (e) => {
 });
 
 function updateAdvancedSummary() {
-  els.advancedSummary.textContent = els.startFenInput.value.trim() ? "Engine settings · custom position" : "Engine settings · temperature, top-p, FEN";
+  els.advancedSummary.textContent = els.startFenInput.value.trim() ? "Starting position · custom" : "Starting position · FEN";
 }
 els.startFenInput.addEventListener("input", updateAdvancedSummary);
 els.analyzeThisBtn.addEventListener("click", sendGameToAnalyze);
