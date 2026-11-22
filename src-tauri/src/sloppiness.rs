@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-// blunder odds vs a full clock from 4,000 analysed Lichess rapid games: (upper edge of clock share, factor)
-const CLOCK_FACTORS: [(f64, f64); 5] = [(0.05, 2.37), (0.1, 2.28), (0.2, 1.82), (0.4, 1.76), (0.7, 1.46)];
+// rapid, move 12+ only, vs 70%+ clock (168k moves): (upper edge of clock share, factor)
+const CLOCK_FACTORS: [(f64, f64); 5] = [(0.05, 1.86), (0.1, 1.76), (0.2, 1.47), (0.4, 1.48), (0.7, 1.41)];
 pub const BLUNDER_LOSS: f64 = 0.30;
 const COVERAGE: f64 = 0.95;
 const MAX_CANDIDATES: usize = 8;
