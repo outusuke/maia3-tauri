@@ -397,6 +397,6 @@ body.noGame .sheetClose { display: none; }
   background-size: 36px auto, 36px auto; background-position: 0 50%, 100% 50%;
 }
 :root[data-theme="minimal"] #side-select button[data-value="selfplay"] {
-  background: radial-gradient(circle at 28% 50%, #fff 0 27%, transparent 28%), radial-gradient(circle at 72% 50%, #111 0 27%, transparent 28%), #4a4e5a;
+  background: radial-gradient(circle 8px at 12px 50%, #fff 7px, transparent 8px), radial-gradient(circle 8px at 30px 50%, #111 7px, transparent 8px), #4a4e5a;
 }
 #black-field[hidden], #oppo-field[hidden], #resign-btn[hidden], #pause-btn[hidden] { display: none !important; }
