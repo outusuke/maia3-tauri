@@ -391,3 +391,16 @@ body.noGame .sheetClose { display: none; }
 .aboutCard .setRow label { flex: 1; }
 .aboutCard input[type="range"] { width: 100%; }
 #sheet-summary { display: block; width: 100%; margin: 0 0 14px; text-align: left; }
+
+#side-select button[data-value="selfplay"]::before {
+  width: 58px; background-image: url("img/chesspieces/wikipedia/wK.png"), url("img/chesspieces/wikipedia/bK.png");
+  background-size: 36px auto, 36px auto; background-position: 0 50%, 100% 50%;
+}
+:root[data-theme="minimal"] #side-select button[data-value="selfplay"] {
+  background: radial-gradient(circle 8px at 12px 50%, #fff 7px, transparent 8px), radial-gradient(circle 8px at 30px 50%, #111 7px, transparent 8px), #4a4e5a;
+}
+#black-field[hidden], #oppo-field[hidden], #resign-btn[hidden], #pause-btn[hidden] { display: none !important; }
+
+/* self-play is always "thinking", so skip the looping animations */
+body.watching .statusLine[data-mood="thinking"]::after { animation: none; content: "…"; }
+body.watching .oppCard[data-mood="thinking"] .oppAvatar::after { animation: none; opacity: .6; transform: scale(1.1); }

@@ -42,6 +42,7 @@
     syncOpp();
   }
   els.eloSlider.addEventListener("input", syncElo);
+  els.eloBlackSlider.addEventListener("input", syncElo);
   // session restore sets the label text without firing events
   new MutationObserver(syncElo).observe(els.eloValue, { childList: true, characterData: true, subtree: true });
   
@@ -53,7 +54,7 @@
       const dot = name && name.querySelector(".pDot");
       if (!dot) continue;
       const color = dot.classList.contains("white") ? "white" : "black";
-      const label = color === playerColor ? "You" : `Maia-3 ${els.eloSlider.value}`;
+      const label = selfPlay ? `Maia-3 ${eloOf(color)}` : color === playerColor ? "You" : `Maia-3 ${els.eloSlider.value}`;
       const text = [...name.childNodes].find((n) => n.nodeType === 3);
       if (text && text.nodeValue !== label) text.nodeValue = label;
     }
@@ -112,9 +113,11 @@
   function syncSheetSummary() {
     const side = els.sideSelect.querySelector("button.active");
     const time = els.timeSelect.querySelector("button.active");
-    $("sheet-summary").textContent = `Maia ${els.eloSlider.value} · ${side ? side.textContent : "Random"} · ${time ? time.textContent : "None"}  ·  Change in Settings`;
+    const strength = side && side.dataset.value === "selfplay" ? `Maia ${els.eloSlider.value} vs ${els.eloBlackSlider.value}` : `Maia ${els.eloSlider.value}`;
+    const sideText = side && side.dataset.value === "selfplay" ? "Watching" : side ? side.textContent : "Random";
+    $("sheet-summary").textContent = `${strength} · ${sideText} · ${time ? time.textContent : "None"}  ·  Change in Settings`;
   }
-  [els.eloSlider, els.sideSelect, els.timeSelect].forEach((el) => {
+  [els.eloSlider, els.eloBlackSlider, els.sideSelect, els.timeSelect].forEach((el) => {
     el.addEventListener("input", syncSheetSummary);
     el.addEventListener("click", () => setTimeout(syncSheetSummary));
   });
@@ -124,10 +127,11 @@
     const elo = parseInt(els.eloSlider.value, 10);
     const inGame = gameStarted || posHistory.length > 1;
     const mood = inGame ? (els.status.dataset.mood || "") : "";
-    $("oppName").textContent = `Maia-3 · ${elo}`;
-    $("oppSub").textContent = inGame ? `You play ${playerColor === "white" ? "White" : "Black"}` : "";
-    $("oppState").textContent = { thinking: "Thinking", yours: "Your turn", over: "Game over" }[mood] || "";
+    $("oppName").textContent = selfPlay ? `Maia-3 · ${elo} vs ${eloOf("black")}` : `Maia-3 · ${elo}`;
+    $("oppSub").textContent = selfPlay ? (inGame ? "White vs Black" : "") : inGame ? `You play ${playerColor === "white" ? "White" : "Black"}` : "";
+    $("oppState").textContent = (selfPlay && selfPlayPaused && !isGameOver()) ? "Paused" : { thinking: "Thinking", yours: "Your turn", over: "Game over" }[mood] || "";
     $("oppCard").dataset.mood = mood;
+    document.body.classList.toggle("watching", selfPlay);
   }
 
   // ---------- result card ----------
@@ -139,7 +143,14 @@
     const moves = Math.ceil((state.sanHistory || []).length / 2);
     const elo = els.eloSlider.value;
     let outcome = "draw", title = "Draw", text = "";
-    if (state.status === "checkmate") {
+    if (selfPlay) {
+      const w = state.winner === "white" ? "White" : "Black";
+      outcome = "draw";
+      title = state.winner ? `${w} wins` : "Draw";
+      text = state.status === "checkmate" ? `Checkmate by ${w} (Maia ${eloOf(state.winner)}).`
+        : state.status === "timeout" ? `${w} wins on time.`
+        : state.status === "stalemate" ? "Stalemate: no legal moves, but no check." : "The game ended in a draw.";
+    } else if (state.status === "checkmate") {
       const won = state.winner === playerColor;
       outcome = won ? "win" : "loss";
       title = won ? "You won!" : "Maia won";
@@ -156,7 +167,9 @@
     }
     resultBox.dataset.outcome = outcome;
     $("resultTitle").textContent = title;
-    $("resultText").textContent = `${text} (${moves} move${moves === 1 ? "" : "s"} vs Maia ${elo})`;
+    $("resultText").textContent = selfPlay
+      ? `${text} (${moves} move${moves === 1 ? "" : "s"}, Maia ${eloOf("white")} vs Maia ${eloOf("black")})`
+      : `${text} (${moves} move${moves === 1 ? "" : "s"} vs Maia ${elo})`;
     $("resultReview").disabled = posHistory.length <= 1;
     resultCard.hidden = false;
     $("resultReview").focus({ preventScroll: true });
@@ -173,6 +186,9 @@
     const hasGame = gameStarted || posHistory.length > 1;
     document.body.classList.toggle("noGame", !hasGame);
     els.resignBtn.disabled = !gameStarted || isGameOver();
+    els.resignBtn.hidden = selfPlay;
+    els.pauseBtn.hidden = !selfPlay;
+    els.pauseBtn.disabled = !gameStarted || isGameOver();
     startCard.hidden = hasGame || sheetIsOpen();
     $("sheet-note").hidden = !(gameStarted && !isGameOver());
     syncSheetSummary();

@@ -127,6 +127,7 @@
           </div>
           <div class="actions">
             <button class="small" id="undo-btn" title="Undo (U)">Undo</button>
+            <button class="small" id="pause-btn" hidden>Pause</button>
             <button class="small danger" id="resign-btn">Resign</button>
             <button class="small" id="copy-pgn-btn">PGN</button>
             <button class="primary" id="analyze-this-btn" title="Open this game in Review">Review game</button>
@@ -400,6 +401,14 @@
         <p class="hint" id="no-model-hint" style="display:none;">This build has no Maia-3 model bundled.</p>
       </div>
 
+      <div class="field" id="black-field" hidden>
+        <div class="fieldHead">
+          <label for="elo-black-slider">Black Maia strength</label>
+        </div>
+        <div class="eloRow"><b id="elo-black-value">1500</b><span class="eloUnit">Elo</span></div>
+        <input type="range" id="elo-black-slider" min="600" max="2600" step="50" value="1500" />
+      </div>
+
       <div class="field" id="oppo-field">
         <div class="fieldHead">
           <label for="oppo-slider">Your rating: <b id="oppo-value">Same as Maia</b></label>
@@ -415,6 +424,7 @@
           <button type="button" role="radio" data-value="white" aria-checked="false" aria-label="White" title="White">White</button>
           <button type="button" role="radio" data-value="random" aria-checked="true" class="active" aria-label="Random" title="Random">Random</button>
           <button type="button" role="radio" data-value="black" aria-checked="false" aria-label="Black" title="Black">Black</button>
+          <button type="button" role="radio" data-value="selfplay" aria-checked="false" aria-label="Maia vs Maia" title="Watch Maia play itself">Maia vs Maia</button>
         </div>
       </div>
 

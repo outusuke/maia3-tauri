@@ -55,7 +55,8 @@ function saveRecentGame() {
   const games = readRecentGames();
   if (games[0] && games[0].pgn === pgn) return;
   games.unshift({
-    t: Date.now(), pgn, color: playerColor, elo: els.eloSlider.value, result,
+    t: Date.now(), pgn, color: selfPlay ? "both" : playerColor, selfPlay,
+    elo: selfPlay ? `${els.eloSlider.value}/${els.eloBlackSlider.value}` : els.eloSlider.value, result,
     plies: state.sanHistory.length, key: analysisKey(startFen, state.sanHistory),
   });
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(games.slice(0, RECENT_MAX))); } catch {}
@@ -63,6 +64,7 @@ function saveRecentGame() {
 }
 
 function recentTitle(g) {
+  if (g.selfPlay) return g.result === "1-0" ? "Maia vs Maia · White won" : g.result === "0-1" ? "Maia vs Maia · Black won" : "Maia vs Maia · Draw";
   const side = g.color === "black" ? "Black" : "White";
   if (!g.result) return `Game as ${side}`;
   if (g.result === "1/2-1/2") return `Draw as ${side}`;
