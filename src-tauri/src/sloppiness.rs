@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
-// blunder odds vs 70%+ clock, move 12+ only, 4,000 Lichess games each: (upper edge of clock share, factor)
-const RAPID_FACTORS: [(f64, f64); 5] = [(0.05, 1.86), (0.1, 1.76), (0.2, 1.47), (0.4, 1.48), (0.7, 1.41)];
-const BLITZ_FACTORS: [(f64, f64); 5] = [(0.05, 3.13), (0.1, 2.29), (0.2, 1.99), (0.4, 1.73), (0.7, 1.59)];
+// blunder odds vs 70%+ clock, move 24+, 4k-12k Lichess games per preset: (upper edge of clock share, factor)
+const FACTORS_5_0: [(f64, f64); 5] = [(0.05, 2.87), (0.1, 2.25), (0.2, 2.27), (0.4, 1.83), (0.7, 1.51)];
+const FACTORS_10_0: [(f64, f64); 5] = [(0.05, 1.90), (0.1, 1.67), (0.2, 1.29), (0.4, 1.39), (0.7, 1.35)];
+const FACTORS_15_10: [(f64, f64); 5] = [(0.05, 1.32), (0.1, 1.30), (0.2, 1.19), (0.4, 1.05), (0.7, 1.04)];
 pub const BLUNDER_LOSS: f64 = 0.30;
 const COVERAGE: f64 = 0.95;
 const MAX_CANDIDATES: usize = 8;
@@ -16,7 +17,13 @@ pub struct Scored {
 }
 
 pub fn clock_factor(share_left: f64, base_secs: f64) -> f64 {
-    let table = if base_secs < 600.0 { &BLITZ_FACTORS } else { &RAPID_FACTORS };
+    let table = if base_secs < 450.0 {
+        &FACTORS_5_0
+    } else if base_secs < 750.0 {
+        &FACTORS_10_0
+    } else {
+        &FACTORS_15_10
+    };
     table.iter().find(|(edge, _)| share_left < *edge).map_or(1.0, |(_, f)| *f)
 }
 
@@ -82,7 +89,7 @@ mod tests {
         assert!(clock_factor(0.5, 600.0) > 1.0);
         assert!(clock_factor(0.02, 600.0) > clock_factor(0.5, 600.0));
         assert_eq!(clock_factor(f64::NAN, 600.0), 1.0);
-        assert!(clock_factor(0.02, 180.0) > clock_factor(0.02, 600.0));
+        assert!(clock_factor(0.02, 300.0) > clock_factor(0.02, 900.0));
     }
 
     #[test]
