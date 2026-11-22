@@ -131,6 +131,7 @@
     $("oppSub").textContent = selfPlay ? (inGame ? "White vs Black" : "") : inGame ? `You play ${playerColor === "white" ? "White" : "Black"}` : "";
     $("oppState").textContent = (selfPlay && selfPlayPaused && !isGameOver()) ? "Paused" : { thinking: "Thinking", yours: "Your turn", over: "Game over" }[mood] || "";
     $("oppCard").dataset.mood = mood;
+    document.body.classList.toggle("watching", selfPlay);
   }
 
   // ---------- result card ----------

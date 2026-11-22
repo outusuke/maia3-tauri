@@ -69,7 +69,8 @@ let startFen = STANDARD_FEN;
 let selfPlay = false;
 let selfPlayPaused = false;
 let selfPlayRun = 0;
-const SELFPLAY_MIN_MS = 700;
+// idle gap between plies so a core isn't pinned all game
+const SELFPLAY_MIN_MS = 1500;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function eloOf(color) {
@@ -247,7 +248,8 @@ function clockLeft(color) {
 function renderClocks() {
   document.querySelectorAll("#playTab .clk").forEach((el) => {
     const color = el.dataset.side;
-    el.textContent = clock ? clockText(clockLeft(color)) : "";
+    const text = clock ? clockText(clockLeft(color)) : "";
+    if (el.textContent !== text) el.textContent = text;
     el.classList.toggle("on", !!clock && color === clock.turn && gameStarted && !isGameOver());
     el.classList.toggle("low", !!clock && clockLeft(color) < 20000);
   });
@@ -523,7 +525,9 @@ async function runSelfPlay() {
   const run = ++selfPlayRun;
   const live = () => run === selfPlayRun && selfPlay && gameStarted && !isGameOver();
   while (live()) {
-    if (selfPlayPaused) { await sleep(150); continue; }
+    if (selfPlayPaused) { await sleep(250); continue; }
+    // timed games keep going so the clock stays fair
+    if (!clock && document.hidden) { await sleep(500); continue; }
     const started = Date.now();
     const plies = posHistory.length;
     await triggerEngineMove();

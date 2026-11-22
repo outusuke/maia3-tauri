@@ -400,3 +400,7 @@ body.noGame .sheetClose { display: none; }
   background: radial-gradient(circle 8px at 12px 50%, #fff 7px, transparent 8px), radial-gradient(circle 8px at 30px 50%, #111 7px, transparent 8px), #4a4e5a;
 }
 #black-field[hidden], #oppo-field[hidden], #resign-btn[hidden], #pause-btn[hidden] { display: none !important; }
+
+/* self-play is always "thinking", so skip the looping animations */
+body.watching .statusLine[data-mood="thinking"]::after { animation: none; content: "…"; }
+body.watching .oppCard[data-mood="thinking"] .oppAvatar::after { animation: none; opacity: .6; transform: scale(1.1); }
