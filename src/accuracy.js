@@ -140,7 +140,7 @@ function computeAccuracy(moves) {
 }
 
 function renderAccuracyTiles(stats, sides) {
-  const mine = loadedGame && loadedGame.myColor;
+  const mine = loadedGame && (loadedGame.myColor === "white" || loadedGame.myColor === "black") ? loadedGame.myColor : null;
   const order = mine && sides.includes(mine) ? [mine, ...sides.filter((s) => s !== mine)] : sides;
   const tiles = document.getElementById("accTiles");
   tiles.textContent = "";

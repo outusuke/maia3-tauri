@@ -15,13 +15,14 @@ function snapshotSession() {
     settings: {
       side: selectedSide(),
       elo: els.eloSlider.value,
+      eloBlack: els.eloBlackSlider.value,
       oppoElo: oppoElo(),
       temperature: els.temperatureSlider.value,
       topP: els.topPSlider.value,
       opening: els.openingCheckbox.checked,
       slips: els.slipsCheckbox.checked,
     },
-    play: live ? {
+    play: live && !selfPlay ? { // a watched game can't be resumed as a normal one
       startFen,
       playerColor,
       flipped,
@@ -152,6 +153,7 @@ async function restoreSession() {
   try {
     const st = s.settings || {};
     if (st.elo) { els.eloSlider.value = st.elo; els.eloValue.textContent = st.elo; }
+    if (st.eloBlack) { els.eloBlackSlider.value = st.eloBlack; els.eloBlackValue.textContent = st.eloBlack; }
     if (st.oppoElo) { els.oppoSlider.value = st.oppoElo; els.oppoAuto.checked = false; syncOppoUI(); }
     if (st.temperature) { els.temperatureSlider.value = st.temperature; els.temperatureSlider.dispatchEvent(new Event("input")); }
     if (st.topP) { els.topPSlider.value = st.topP; els.topPSlider.dispatchEvent(new Event("input")); }

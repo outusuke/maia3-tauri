@@ -14,6 +14,11 @@ const els = {
   modelSelect: document.getElementById("model-select"),
   eloSlider: document.getElementById("elo-slider"),
   eloValue: document.getElementById("elo-value"),
+  eloBlackSlider: document.getElementById("elo-black-slider"),
+  eloBlackValue: document.getElementById("elo-black-value"),
+  blackField: document.getElementById("black-field"),
+  oppoField: document.getElementById("oppo-field"),
+  pauseBtn: document.getElementById("pause-btn"),
   oppoAuto: document.getElementById("oppo-auto"),
   oppoSlider: document.getElementById("oppo-slider"),
   oppoValue: document.getElementById("oppo-value"),
@@ -61,11 +66,22 @@ let engineBusy = false;
 let gameStarted = false;
 let startFen = STANDARD_FEN;
 
+let selfPlay = false;
+let selfPlayPaused = false;
+let selfPlayRun = 0;
+const SELFPLAY_MIN_MS = 700;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function eloOf(color) {
+  return parseInt((color === "white" ? els.eloSlider : els.eloBlackSlider).value, 10);
+}
+
 // One entry per ply (0 = start), mirrors the backend's game state.
 let posHistory = [{ fen: STANDARD_FEN, lastMove: null }];
 let viewPly = 0; // index into posHistory currently shown; live = length-1
 
 els.eloSlider.addEventListener("input", () => { els.eloValue.textContent = els.eloSlider.value; });
+els.eloBlackSlider.addEventListener("input", () => { els.eloBlackValue.textContent = els.eloBlackSlider.value; });
 // null means Maia assumes you are at its own Elo
 function oppoElo() { return els.oppoAuto.checked ? null : parseInt(els.oppoSlider.value, 10); }
 function syncOppoUI() {
@@ -74,6 +90,7 @@ function syncOppoUI() {
 }
 async function applyEloLive() {
   if (!gameStarted || isGameOver()) return; // pre-game, this just sets the value startGame() will read
+  if (selfPlay) return;
   const elo = parseInt(els.eloSlider.value, 10);
   try {
     await invoke("set_engine_elo", { elo, oppoElo: oppoElo() });
@@ -126,6 +143,19 @@ els.slipsCheckbox.addEventListener("change", () => { if (els.slipsCheckbox.check
 els.startBtn.addEventListener("click", startGame);
 els.flipBtn.addEventListener("click", () => { flipped = !flipped; renderPlayBoard(); });
 els.resignBtn.addEventListener("click", resign);
+els.pauseBtn.addEventListener("click", () => {
+  if (selfPlayPaused) {
+    selfPlayPaused = false;
+    if (clock) clock.last += Date.now() - pausedAt;
+  } else {
+    pausedAt = Date.now();
+    selfPlayPaused = true;
+  }
+  syncPauseBtn();
+  if (!isGameOver()) setStatus(statusBanner());
+  updateControls();
+});
+function syncPauseBtn() { els.pauseBtn.textContent = selfPlayPaused ? "Resume" : "Pause"; }
 els.clearFenBtn.addEventListener("click", () => { els.startFenInput.value = ""; hideFenError(); updateAdvancedSummary(); });
 els.undoBtn.addEventListener("click", doUndo);
 els.copyPgnBtn.addEventListener("click", copyPgn);
@@ -167,7 +197,10 @@ document.addEventListener("keydown", (e) => {
     return;
   }
   const key = e.key.toLowerCase();
-  if (key === "f") {
+  if (key === " " && selfPlay && !els.pauseBtn.disabled) {
+    e.preventDefault();
+    els.pauseBtn.click();
+  } else if (key === "f") {
     e.preventDefault();
     els.flipBtn.click();
   } else if (key === "u" && !els.undoBtn.disabled) {
@@ -202,10 +235,13 @@ function clockText(ms) {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
+let pausedAt = 0;
+const clockNow = () => (selfPlayPaused ? pausedAt : Date.now());
+
 function clockLeft(color) {
   if (!clock) return 0;
   const running = color === clock.turn && gameStarted && !isGameOver();
-  return clock[color] - (running ? Date.now() - clock.last : 0);
+  return clock[color] - (running ? clockNow() - clock.last : 0);
 }
 
 function renderClocks() {
@@ -229,7 +265,7 @@ function startClock() {
 // Hands the clock to whoever is on move now; the mover who just played gets the increment.
 function syncClockTurn(withIncrement = true) {
   if (!clock || clock.turn === state.turn) return;
-  const now = Date.now();
+  const now = clockNow();
   clock[clock.turn] += (withIncrement ? clock.inc : 0) - (now - clock.last);
   clock.turn = state.turn;
   clock.last = now;
@@ -239,7 +275,7 @@ async function tickClock() {
   if (!clock || !gameStarted || isGameOver()) { clearInterval(clockTimer); renderClocks(); return; }
   if (clockLeft(clock.turn) > 0) { renderClocks(); return; }
   clock[clock.turn] = 0;
-  clock.last = Date.now();
+  clock.last = clockNow();
   state = { ...state, status: "timeout", winner: clock.turn === "white" ? "black" : "white" };
   gameStarted = false;
   clearInterval(clockTimer);
@@ -256,7 +292,16 @@ els.sideSelect.addEventListener("click", (e) => {
     b.classList.toggle("active", b === btn);
     b.setAttribute("aria-checked", String(b === btn));
   });
+  syncSideFields();
 });
+
+function syncSideFields() {
+  const watching = selectedSide() === "selfplay";
+  els.blackField.hidden = !watching;
+  els.oppoField.hidden = watching;
+  document.querySelector('label[for="elo-slider"]').textContent = watching ? "White Maia strength" : "Opponent strength";
+}
+syncSideFields();
 
 function updateAdvancedSummary() {
   els.advancedSummary.textContent = els.startFenInput.value.trim() ? "Starting position · custom" : "Starting position · FEN";
@@ -349,7 +394,11 @@ async function startGame() {
     hideFenError();
 
     const chosen = selectedSide();
-    playerColor = chosen === "random" ? (Math.random() < 0.5 ? "white" : "black") : chosen;
+    selfPlayRun += 1;
+    selfPlay = chosen === "selfplay";
+    selfPlayPaused = false;
+    syncPauseBtn();
+    playerColor = selfPlay ? "white" : chosen === "random" ? (Math.random() < 0.5 ? "white" : "black") : chosen;
     flipped = playerColor === "black";
 
     const model = getActiveModel();
@@ -366,7 +415,7 @@ async function startGame() {
     await invoke("start_engine", {
       command: model,
       elo,
-      oppoElo: oppoElo(),
+      oppoElo: selfPlay ? eloOf("black") : oppoElo(),
       extraArgs: [
         "--temperature", String(temperature),
         "--top-p", String(topP),
@@ -385,7 +434,9 @@ async function startGame() {
     renderMoveList();
     setStatus(statusBanner());
 
-    if (state.turn !== playerColor) {
+    if (selfPlay) {
+      runSelfPlay(); // not awaited, or Start stays disabled for the whole game
+    } else if (state.turn !== playerColor) {
       await triggerEngineMove();
     }
   } catch (err) {
@@ -396,7 +447,7 @@ async function startGame() {
 }
 
 async function resign() {
-  if (!gameStarted || isGameOver()) return;
+  if (!gameStarted || isGameOver() || selfPlay) return;
   gameStarted = false;
   state.status = "resigned";
   state.winner = playerColor === "white" ? "black" : "white";
@@ -412,7 +463,20 @@ function isGameOver() {
 
 function setStatus(text) { els.status.textContent = text; }
 
+const sideName = (c) => (c === "white" ? "White" : "Black");
+
 function statusBanner() {
+  if (selfPlay) {
+    switch (state.status) {
+      case "checkmate": return `Checkmate — ${sideName(state.winner)} wins.`;
+      case "stalemate": return "Draw by stalemate.";
+      case "draw": return "Draw.";
+      case "timeout": return `Time out — ${sideName(state.winner)} wins.`;
+      default:
+        if (selfPlayPaused) return "Paused.";
+        return `${sideName(state.turn)} (Maia ${eloOf(state.turn)}) is thinking…`;
+    }
+  }
   switch (state.status) {
     case "checkmate":
       return `Checkmate — ${state.winner === playerColor ? "you win!" : "Maia-3 wins."}`;
@@ -432,14 +496,18 @@ async function triggerEngineMove() {
   updateControls();
   setStatus("Maia-3 is thinking…");
   try {
-    const botColor = playerColor === "white" ? "black" : "white";
+    const botColor = selfPlay ? state.turn : playerColor === "white" ? "black" : "white";
+    if (selfPlay) {
+      await invoke("set_engine_elo", { elo: eloOf(botColor), oppoElo: eloOf(botColor === "white" ? "black" : "white") });
+    }
     const botClock = clock && { remainingMs: Math.max(0, clockLeft(botColor)), baseMs: clock.base, incMs: clock.inc };
     const reply = await invoke("engine_move", { clock: botClock, slips: els.slipsCheckbox.checked });
     if (state.status === "timeout") return; // the clock ran out while Maia was thinking
     state = reply;
     syncClockTurn();
+    const followLive = isLive() || !selfPlay;
     posHistory.push({ fen: state.fen, lastMove: state.lastMove });
-    viewPly = posHistory.length - 1;
+    if (followLive) viewPly = posHistory.length - 1;
     renderPlayBoard();
     renderMoveList();
   } catch (err) {
@@ -448,6 +516,27 @@ async function triggerEngineMove() {
     engineBusy = false;
     updateControls();
     if (!isGameOver()) setStatus(statusBanner());
+  }
+}
+
+async function runSelfPlay() {
+  const run = ++selfPlayRun;
+  const live = () => run === selfPlayRun && selfPlay && gameStarted && !isGameOver();
+  while (live()) {
+    if (selfPlayPaused) { await sleep(150); continue; }
+    const started = Date.now();
+    const plies = posHistory.length;
+    await triggerEngineMove();
+    if (run === selfPlayRun && isGameOver()) setStatus(statusBanner());
+    if (!live()) return;
+    if (posHistory.length === plies) {
+      pausedAt = Date.now();
+      selfPlayPaused = true;
+      syncPauseBtn();
+      updateControls();
+      continue;
+    }
+    if (!clock) await sleep(Math.max(0, SELFPLAY_MIN_MS - (Date.now() - started)));
   }
 }
 
@@ -509,7 +598,7 @@ function updateControls() {
   els.navPrev.disabled = viewPly === 0;
   els.navNext.disabled = viewPly >= posHistory.length - 1;
   els.navEnd.disabled = viewPly >= posHistory.length - 1;
-  els.undoBtn.disabled = !gameStarted || posHistory.length <= 1 || engineBusy;
+  els.undoBtn.disabled = !gameStarted || posHistory.length <= 1 || engineBusy || selfPlay;
   els.copyPgnBtn.disabled = posHistory.length <= 1;
   els.analyzeThisBtn.disabled = posHistory.length <= 1;
 }
@@ -549,11 +638,11 @@ function renderPlayBoard() {
 }
 
 function canPlayerMove() {
-  return gameStarted && !isGameOver() && !engineBusy && isLive() && state.turn === playerColor;
+  return gameStarted && !isGameOver() && !engineBusy && isLive() && !selfPlay && state.turn === playerColor;
 }
 
 async function onPlaySquareClick(sq) {
-  if (!gameStarted || isGameOver() || engineBusy || !isLive()) return;
+  if (!gameStarted || isGameOver() || engineBusy || !isLive() || selfPlay) return;
   if (state.turn !== playerColor) return;
 
   const board = fenToBoard(state.fen);
@@ -620,7 +709,7 @@ function renderMoveList() {
   if (history.length === 0) {
     const empty = document.createElement("li");
     empty.className = "move-empty";
-    empty.textContent = "Moves will appear here as you play.";
+    empty.textContent = "Moves will appear here as the game goes on.";
     list.appendChild(empty);
     return;
   }
@@ -735,7 +824,7 @@ function sendGameToAnalyze() {
     startFen: startFen,
     sans: state.sanHistory.slice(),
     fens,
-    myColor: playerColor,
+    myColor: selfPlay ? "both" : playerColor,
   });
   switchTab("analyze");
 }
