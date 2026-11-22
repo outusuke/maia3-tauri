@@ -290,7 +290,7 @@ button.small.wide { width: 100%; }
 #help-toast {
   position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); max-width: 380px; padding: 10px 14px;
   background: var(--panel-bg-2); border: 1px solid var(--accent); border-radius: 10px; font-size: 13px; line-height: 1.5;
-  opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 50;
+  opacity: 0; pointer-events: none; transition: opacity 0.15s; z-index: 80; /* stays over the settings sheet (60) */
 }
 #help-toast.show { opacity: 1; }
 
