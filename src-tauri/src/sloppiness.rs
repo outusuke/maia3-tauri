@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
-// rapid, move 12+ only, vs 70%+ clock (168k moves): (upper edge of clock share, factor)
-const CLOCK_FACTORS: [(f64, f64); 5] = [(0.05, 1.86), (0.1, 1.76), (0.2, 1.47), (0.4, 1.48), (0.7, 1.41)];
+// blunder odds vs 70%+ clock, move 12+ only, 4,000 Lichess games each: (upper edge of clock share, factor)
+const RAPID_FACTORS: [(f64, f64); 5] = [(0.05, 1.86), (0.1, 1.76), (0.2, 1.47), (0.4, 1.48), (0.7, 1.41)];
+const BLITZ_FACTORS: [(f64, f64); 5] = [(0.05, 3.13), (0.1, 2.29), (0.2, 1.99), (0.4, 1.73), (0.7, 1.59)];
 pub const BLUNDER_LOSS: f64 = 0.30;
 const COVERAGE: f64 = 0.95;
 const MAX_CANDIDATES: usize = 8;
@@ -14,8 +15,9 @@ pub struct Scored {
     pub loss: f64,
 }
 
-pub fn clock_factor(share_left: f64) -> f64 {
-    CLOCK_FACTORS.iter().find(|(edge, _)| share_left < *edge).map_or(1.0, |(_, f)| *f)
+pub fn clock_factor(share_left: f64, base_secs: f64) -> f64 {
+    let table = if base_secs < 600.0 { &BLITZ_FACTORS } else { &RAPID_FACTORS };
+    table.iter().find(|(edge, _)| share_left < *edge).map_or(1.0, |(_, f)| *f)
 }
 
 pub fn is_balanced(best_chances: f64) -> bool {
@@ -75,11 +77,12 @@ mod tests {
 
     #[test]
     fn full_clock_changes_nothing_and_pressure_raises_the_factor() {
-        assert_eq!(clock_factor(1.0), 1.0);
-        assert_eq!(clock_factor(0.7), 1.0);
-        assert!(clock_factor(0.5) > 1.0);
-        assert!(clock_factor(0.02) > clock_factor(0.5));
-        assert_eq!(clock_factor(f64::NAN), 1.0);
+        assert_eq!(clock_factor(1.0, 600.0), 1.0);
+        assert_eq!(clock_factor(0.7, 600.0), 1.0);
+        assert!(clock_factor(0.5, 600.0) > 1.0);
+        assert!(clock_factor(0.02, 600.0) > clock_factor(0.5, 600.0));
+        assert_eq!(clock_factor(f64::NAN, 600.0), 1.0);
+        assert!(clock_factor(0.02, 180.0) > clock_factor(0.02, 600.0));
     }
 
     #[test]

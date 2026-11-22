@@ -417,7 +417,7 @@ fn time_pressure_slip(
     chosen: &str,
     clock: timing::ClockInfo,
 ) -> Option<String> {
-    let factor = sloppiness::clock_factor(clock.remaining_ms / clock.base_ms);
+    let factor = sloppiness::clock_factor(clock.remaining_ms / clock.base_ms, clock.base_ms / 1000.0);
     if !(factor > 1.0) {
         return None;
     }
